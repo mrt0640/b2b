@@ -215,6 +215,8 @@ def get_product_info(request):
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=400)
 
+
+
 # ----------------------------------------------------------------------
 # HELPER: TÜRKÇE SAYI FORMATLAMA (API İÇİN - Birim/Adet)
 # ----------------------------------------------------------------------
