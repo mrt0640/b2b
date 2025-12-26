@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="utf-8">
+    <style>
+    @page { size: a4 portrait; margin: 1cm; }
+    body { 
+        font-family: "DejaVu Sans", sans-serif; 
+        font-size: 10pt; 
+    }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border: 1px solid #000; padding: 6px; text-align: left; }
+    .text-right { text-align: right; }
+</style>
+</head>
+<body>
+    <div class="header">
+        <h1>SIPARIS FISI</h1>
+        <p>No: #{{ order.id }} | Tarih: {{ order.order_date|date:"d.m.Y H:i" }}</p>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Ürün</th>
+                <th width="60">Miktar</th>
+                <th width="60">Birim</th>
+                <th width="80">Birim Fiyat</th>
+                <th width="80">Toplam</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in order.items.all %}
+            <tr>
+                <td>{{ item.product.name }}</td>
+                <td style="text-align:center;">{{ item.ordered_quantity }}</td>
+                <td style="text-align:center;">{{ item.ordered_unit.name }}</td>
+                <td class="text-right">{{ item.unit_price_at_order|floatformat:2 }} TL</td>
+                <td class="text-right">{{ item.line_total|floatformat:2 }} TL</td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="5" style="text-align:center;">Siparişe ait ürün bulunamadı.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div style="margin-top: 20px; text-align: right; font-weight: bold; font-size: 14px;">
+        Genel Toplam: {{ order.estimated_total|floatformat:2 }} TL
+    </div>
+</body>
+</html>

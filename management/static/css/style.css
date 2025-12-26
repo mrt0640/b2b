@@ -1,0 +1,64 @@
+/* Ana Layout Düzenlemeleri */
+body {
+    background-color: #f8f9fc;
+    font-family: 'Nunito', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+/* Kart ve Başlık Tasarımları */
+.card {
+    border: none;
+    border-radius: 0.75rem;
+}
+
+.card-header {
+    background-color: #f8f9fc;
+    border-bottom: 1px solid #e3e6f0;
+}
+
+.text-primary {
+    color: #4e73df !important;
+}
+
+/* Tablo Düzenlemeleri */
+#order_table thead th {
+    background-color: #f8f9fc;
+    text-transform: uppercase;
+    font-size: 0.75rem;
+    letter-spacing: 0.05em;
+    font-weight: 700;
+    color: #4e73df;
+    border-top: none;
+}
+
+.formset-row td {
+    vertical-align: middle;
+    padding: 0.75rem;
+}
+
+/* Fiyat ve Miktar Alanları İçin Özel Stil */
+.unit-price-display, .subtotal-display {
+    font-weight: 600;
+    color: #5a5c69;
+    background-color: #eaecf4 !important; /* Readonly olduğu belli olsun */
+    border: 1px solid #d1d3e2;
+    text-align: right;
+}
+
+#grand-total {
+    font-size: 1.25rem;
+    font-weight: 800;
+    color: #4e73df;
+}
+
+/* Hata Mesajları */
+.x-small {
+    font-size: 0.75rem;
+}
+
+/* Mobil Uyumluluk İçin Ekstra Boşluklar */
+@media (max-width: 768px) {
+    .container-fluid {
+        padding-left: 10px;
+        padding-right: 10px;
+    }
+}

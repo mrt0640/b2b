@@ -1,0 +1,38 @@
+{% extends "admin/base_site.html" %}
+{% load i18n admin_urls static admin_list %}
+
+{% block content %}
+<div id="content-main">
+    <h1>{{ title }} (Toplam {{ order_count }} Adet Sipariş İçin)</h1>
+    
+    <div class="module">
+        <h2>Ürün Bazında Toplam Gerekli Miktarlar</h2>
+        
+        {% if required_products %}
+        <table>
+            <thead>
+                <tr>
+                    <th scope="col">Ürün Adı</th>
+                    <th scope="col">Toplam Gerekli Miktar</th>
+                    <th scope="col">Birim</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in required_products %}
+                <tr>
+                    <td><strong>{{ item.product__name }}</strong></td>
+                    <td>{{ item.total_quantity|floatformat:2 }}</td>
+                    <td>{{ item.product__unit }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p>Üretime hazır bekleyen sipariş bulunmamaktadır.</p>
+        {% endif %}
+    </div>
+
+    <p style="margin-top: 20px;"><a href="{% url 'admin:index' %}" class="button">Admin Anasayfasına Dön</a></p>
+
+</div>
+{% endblock %}

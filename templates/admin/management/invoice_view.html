@@ -1,0 +1,105 @@
+{% load i18n admin_urls static %}
+
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8"> <title>Fatura - {{ invoice.invoice_number }}</title>
+    <title>Fatura #{{ invoice.invoice_number }}</title>
+    <style>
+        /* PDF için temiz stil */
+        body { font-family: 'DejaVu Sans', sans-serif; font-size: 10pt; margin: 20mm; }
+        h2 { border-bottom: 1px solid #ccc; padding-bottom: 5px; margin-top: 20px; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+        th, td { padding: 8px; border: 1px solid #ddd; text-align: left; }
+        th { background-color: #f2f2f2; }
+        .total-table th, .total-table td { border: none; } /* Toplam tablosunu daha temiz yap */
+        .total-table th { text-align: right; background-color: transparent; font-weight: bold; }
+        .total-table td { text-align: right; font-size: 11pt; }
+        .grand-total th, .grand-total td { background-color: #e0e0e0; font-size: 12pt; }
+        .align-right { text-align: right !important; }
+        
+        /* HTML görünümünde gizlenecek elementler (PDF'de sadece çıktı görünecek) */
+        .button, .actions { display: none; } 
+    </style>
+</head>
+<body>
+
+<div id="content-main">
+    </div>
+
+</body>
+</html>
+
+{% block content %}
+<div id="content-main">
+    <div class="module">
+        <h2>Fatura Bilgileri</h2>
+        <div class="fieldset">
+            <table>
+                <tr>
+                    <th style="width: 150px;">Fatura Numarası:</th>
+                    <td><strong>{{ invoice.invoice_number }}</strong></td>
+                    <th style="width: 150px;">Sipariş ID:</th>
+                    <td>{{ invoice.order_id }}</td>
+                </tr>
+                <tr>
+                    <th>Bayi Adı:</th>
+                    <td>{{ invoice.dealer.name }}</td>
+                    <th>Tarih:</th>
+                    <td>{{ invoice.invoice_date|date:"d.m.Y H:i" }}</td>
+                </tr>
+            </table>
+        </div>
+
+        <h2 style="margin-top: 20px;">Fatura Satırları</h2>
+        <div class="results">
+            <table id="result_list" style="width: 100%; border-collapse: collapse; margin-top: 20px;">
+    <thead>
+        <tr style="background-color: #f2f2f2;">
+            <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Ürün Adı</th>
+            <th style="border: 1px solid #ddd; padding: 8px; text-align: center;">Miktar</th>
+            <th style="border: 1px solid #ddd; padding: 8px; text-align: center;">Birim</th> <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">Birim Fiyat<br><small>(KDV Hariç)</small></th>
+            <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">Ara Toplam</th>
+            <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">KDV</th>
+            <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">Satır Toplamı</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for line in invoice.invoice_lines %}
+        <tr>
+            <td style="border: 1px solid #ddd; padding: 8px;">{{ line.product_name }}</td>
+            <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">{{ line.quantity|floatformat:0 }}</td>
+            <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">{{ line.unit }}</td> <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">{{ line.unit_price|floatformat:2 }} TL</td>
+            <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">{{ line.subtotal|floatformat:2 }} TL</td>
+            <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">%{{ line.vat_rate|floatformat:0 }}</td>
+            <td style="border: 1px solid #ddd; padding: 8px; text-align: right;"><strong>{{ line.line_total|floatformat:2 }} TL</strong></td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+        </div>
+
+        <div style="float: right; width: 350px; margin-top: 20px;">
+            <table style="width: 100%;">
+                <tr>
+                    <th style="text-align: right; padding: 5px; background-color: #f5f5f5;">KDV Hariç Toplam:</th>
+                    <td style="text-align: right; padding: 5px;">{{ invoice.vat_excluded_total|floatformat:2 }} TL</td>
+                </tr>
+                <tr>
+                    <th style="text-align: right; padding: 5px; background-color: #f5f5f5;">Toplam KDV:</th>
+                    <td style="text-align: right; padding: 5px;">{{ invoice.total_vat|floatformat:2 }} TL</td>
+                </tr>
+                <tr>
+                    <th style="text-align: right; padding: 8px; background-color: #e0e0e0;">GENEL TOPLAM (KDV Dahil):</th>
+                    <td style="text-align: right; padding: 8px; background-color: #e0e0e0;"><strong>{{ invoice.grand_total|floatformat:2 }} TL</strong></td>
+                </tr>
+            </table>
+        </div>
+        
+        <div style="clear: both; margin-top: 50px;">
+            <a href="{% url 'admin:management_order_changelist' %}" class="button">Sipariş Listesine Dön</a>
+        </div>
+        
+    </div>
+</div>
+{% endblock %}

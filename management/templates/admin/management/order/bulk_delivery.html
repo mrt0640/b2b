@@ -1,0 +1,87 @@
+{% extends "admin/base_site.html" %}
+{% load i18n admin_urls static admin_list %}
+{% load management_tags %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">{% translate 'Home' %}</a>
+    &rsaquo; <a href="{% url 'admin:app_list' app_label=opts.app_label %}">{{ opts.app_config.verbose_name }}</a>
+    &rsaquo; <a href="{% url opts|admin_urlname:'changelist' %}">{{ opts.verbose_name_plural|capfirst }}</a>
+    &rsaquo; Toplu Teslimat ve Onay
+</div>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+   
+
+    <p>Seçilen sipariş kalemleri için teslim edilen miktarları girin ve onaylayın.</p>
+
+        
+   <form action="" method="post">
+        {% csrf_token %}
+        
+        <fieldset class="module aligned wide">
+            <h2>Teslimat Ataması</h2>
+            
+            {# Eğer forms.py'de HiddenInput widget'ı atanmışsa (Kurye tespit edilmişse) #}
+            {% if form.courier.field.widget.input_type == 'hidden' %}
+                {{ form.courier }} {# Gizli alanı render et, değeri göndermek için gerekli #}
+                <p style="padding: 10px; border: 1px solid #71b965; background-color: #e6f5e3; border-radius: 4px; color: #1e4d1e;">
+                    Teslimat onayını yapan yetkili kurye olarak **{{ request.user.get_full_name|default:request.user.username }}** otomatik olarak atanmıştır.
+                </p>
+            
+            {# Eğer Admin (seçim yapması gereken kişi) ise, seçim kutusunu göster #}
+            {% else %}
+                <div class="form-row field-courier">
+                    {% if form.courier.errors %}
+                        <ul class="errorlist">{% for error in form.courier.errors %}<li>{{ error }}</li>{% endfor %}</ul>
+                    {% endif %}
+                    
+                    <div class="fieldBox">
+                        {{ form.courier.label_tag }}
+                        {{ form.courier }}
+                    </div>
+                    
+                    {% if form.courier.help_text %}
+                        <p class="help">{{ form.courier.help_text|safe }}</p>
+                    {% endif %}
+                </div>
+            {% endif %}
+        </fieldset>
+        <fieldset class="module aligned wide">
+            <h2>Bekleyen Teslimatlar</h2>
+            <table id="result_list">
+                <thead>
+                    <tr>
+                        <th>Sipariş ID</th>
+                        <th>Bayi</th>
+                        <th>Ürün</th>
+                        <th>Sipariş Miktarı</th>
+                        <th>Teslim Edilen Miktar</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for delivery in deliveries %}
+                    <tr class="{% cycle 'row1' 'row2' %}">
+                        <td>{{ delivery.order_item.order.id }}</td>
+                        <td>{{ delivery.order_item.order.dealer.name }}</td>
+                        <td>{{ delivery.order_item.product.name }}</td>
+                        <td>{{ delivery.order_item.ordered_quantity }}</td>
+                        <td>
+                            {{ form|get_field:delivery.id }} 
+                        </td>
+                    </tr>
+                {% empty %}
+                    <tr><td colspan="5">Bekleyen teslimat kalemi bulunamadı.</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </fieldset>
+        
+        <div class="submit-row">
+            <input type="submit" value="Teslimatları Onayla ve Cari Hesaba Borçlandır" name="_confirm" />
+        </div>
+    </form>
+</div>
+{% endblock %}

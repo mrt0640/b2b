@@ -1,0 +1,255 @@
+<thead>
+    <tr>
+        <th>Ürün</th>
+        <th width="150">Miktar</th>
+        <th width="150">Birim</th>
+        <th width="150">Birim Fiyat</th>
+        <th width="150">Ara Toplam</th>
+        <th width="50">İşlem</th> </tr>
+</thead>
+
+{% extends 'base.html' %} 
+{% block title %}{{ title }}{% endblock %}
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="h3 mb-0 text-gray-800">{{ title }}</h2> <a href="{% url 'management:order_list' %}" class="btn btn-sm btn-outline-secondary shadow-sm">
+            <i class="fas fa-arrow-left fa-sm text-secondary-50"></i> Listeye Dön
+        </a>
+    </div>
+
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        {% endfor %}
+    {% endif %}
+
+    <form method="post" action="{% url 'management:new_order' %}" id="order-form">
+        {% csrf_token %}
+        
+        <div class="card shadow mb-4">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">Teslimat Bilgileri</h6>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label fw-bold small text-uppercase">İstenen Teslim Tarihi</label>
+                        {{ order_form.delivery_date }}
+                        {% if order_form.delivery_date.errors %}
+                            <div class="text-danger x-small mt-1">{{ order_form.delivery_date.errors.0 }}</div>
+                        {% endif %}
+                    </div>
+                    <div class="col-md-8 mb-3">
+                        <label class="form-label fw-bold small text-uppercase">Sipariş Notu</label>
+                        {{ order_form.notes }}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card shadow mb-4">
+            <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                <h6 class="m-0 font-weight-bold text-primary">Ürün Listesi</h6>
+                <button type="button" id="add-row-btn" class="btn btn-success btn-sm">
+                    <i class="fas fa-plus"></i> Yeni Ürün Ekle
+                </button>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    {{ formset.management_form }}
+                    <table class="table table-hover align-middle mb-0" id="order_table">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width: 40%;">Ürün</th>
+                                <th style="width: 15%;">Miktar</th>
+                                <th style="width: 15%;">Birim</th>
+                                <th style="width: 15%;">Birim Fiyat</th>
+                                <th style="width: 15%;">Ara Toplam</th>
+                                <th style="width: 50px;"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for form in formset %}
+                            <tr class="formset-row">
+                                <td>
+                                    {{ form.id }}
+                                    {{ form.product }}
+                                    {% if form.product.errors %}
+                                        <div class="text-danger x-small mt-1">{{ form.product.errors.0 }}</div>
+                                    {% endif %}
+                                </td>
+                                <td>{{ form.ordered_quantity }}</td>
+                                <td>{{ form.ordered_unit }}</td>
+                                <td>
+                                    <input type="text" class="form-control form-control-sm text-end bg-light unit-price-display" readonly placeholder="0,00 TL">
+                                    <input type="hidden" name="{{ form.prefix }}-ordered_unit_price" class="ordered-unit-price-hidden">
+                                </td>
+                                <td>
+                                    <input type="text" class="form-control form-control-sm text-end bg-light subtotal-display" readonly value="0,00 TL">
+                                </td>
+                                <td class="text-center">
+                                    {% if formset.can_delete %}
+                                        <div class="form-check d-none">{{ form.DELETE }}</div>
+                                        <button type="button" class="btn btn-outline-danger btn-sm remove-row-btn">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                        <tfoot class="table-light border-top">
+                            <tr>
+                                <td colspan="4" class="text-end fw-bold">GENEL TOPLAM:</td>
+                                <td class="text-end fw-bold text-primary h5 mb-0" id="grand-total">0,00 TL</td>
+                                <td></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="d-grid gap-2 d-md-flex justify-content-md-end mb-5">
+            <button type="submit" class="btn btn-primary btn-lg px-5 shadow">
+                <i class="fas fa-check-circle me-2"></i> Siparişi Onayla ve Kaydet
+            </button>
+        </div>
+    </form>
+</div>
+
+<script type="text/template" id="empty-form-template">
+    <tr class="formset-row">
+        <td>{{ formset.empty_form.product }}</td>
+        <td>{{ formset.empty_form.ordered_quantity }}</td>
+        <td>{{ formset.empty_form.ordered_unit }}</td>
+        <td>
+            <input type="text" class="form-control unit-price-display" readonly placeholder="0,00 TL">
+            {{ formset.empty_form.unit_price_at_order }}
+        </td>
+        <td>
+            <input type="text" class="form-control subtotal-display" readonly placeholder="0,00 TL">
+        </td>
+        <td class="text-center">
+            <button type="button" class="btn btn-danger remove-row-btn">
+                <i class="fas fa-trash"></i>Sil
+            </button>
+        </td>
+    </tr>
+</script>
+
+<style>
+    .x-small { font-size: 0.75rem; }
+    .formset-row td { padding: 0.75rem 0.5rem; }
+    .card-header h6 { letter-spacing: 0.5px; }
+    .btn-lg { font-size: 1rem; font-weight: 600; }
+</style>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script>
+
+$(document).ready(function() {
+    const totalFormsInput = $('#id_items-TOTAL_FORMS');
+
+    // DİNLEYİCİ FONKSİYONU (Hem eski hem yeni satırlar için ortak)
+function attachListeners(row) {
+    // 1. Ürün seçimini izle (Mevcut kodun)
+    row.find('.select-product').on('change', function() {
+        const productId = $(this).val();
+        const $row = $(this).closest('tr');
+        if (productId) {
+            $.ajax({
+                url: "{% url 'management:get_product_info' %}",
+                data: { 'product_id': productId },
+                success: function(data) {
+                    // Fiyatı hem gizli alana hem görünür alana yaz
+                    $row.find('.ordered-unit-price-hidden').val(data.price);
+                    $row.find('.unit-price-display').val(data.price.toLocaleString('tr-TR', {minimumFractionDigits: 2}) + ' TL');
+                    
+                    // Birimleri güncelle
+                    let unitSelect = $row.find('.select-unit');
+                    unitSelect.empty();
+                    if (data.units) {
+                        data.units.forEach(u => unitSelect.append(new Option(u.name, u.id)));
+                    }
+                    // Fiyat geldikten sonra hemen ara toplamı hesapla
+                    calculateSubtotal($row);
+                }
+            });
+        }
+    });
+
+    // 2. Miktar değişimini izle (Ara toplam için)
+    row.find('.quantity-input').on('input', function() {
+        calculateSubtotal($(this).closest('tr'));
+    });
+
+    // 3. YENİ: SİLME BUTONUNU İZLE
+    row.find('.remove-row-btn').on('click', function() {
+        const $tableBody = $('#order_table tbody');
+        
+        // Formda en az bir satır kalmasını garanti edelim
+        if ($tableBody.find('tr').length > 1) {
+            $(this).closest('tr').remove(); // Satırı sil
+            
+            // Satır silindikten sonra genel toplamı güncelle
+            calculateGrandTotal();
+            
+            // Django'nun form sayacını (TOTAL_FORMS) güncelle
+            const currentTotal = $tableBody.find('tr').length;
+            $('#id_items-TOTAL_FORMS').val(currentTotal);
+            
+            console.log("Satır silindi. Kalan satır sayısı: " + currentTotal);
+        } else {
+            alert("En az bir ürün satırı bulunmalıdır.");
+        }
+    });
+}
+    // --- KRİTİK NOKTA: SAYFA YÜKLENDİĞİNDE VAR OLAN SATIRLARI AKTİFLEŞTİR ---
+    // Eğer tablo içinde halihazırda (ilk satır gibi) tr'ler varsa onları döngüye al
+    $('#order_table tbody tr').each(function() {
+        attachListeners($(this));
+    });
+
+    // Yeni satır ekleme butonu
+    $('#add-row-btn').on('click', function(e) {
+        e.preventDefault();
+        let formIdx = parseInt(totalFormsInput.val());
+        let template = $('#empty-form-template').html();
+        if (template) {
+            let newRowHtml = template.replace(/__prefix__/g, formIdx);
+            $('#order_table tbody').append(newRowHtml);
+            totalFormsInput.val(formIdx + 1);
+            attachListeners($('#order_table tbody tr').last());
+        }
+    });
+
+    // Hesaplama Fonksiyonları
+    function calculateSubtotal(row) {
+        const qty = parseFloat(row.find('.quantity-input').val()) || 0;
+        // Gizli alandaki ham fiyatı alıyoruz
+        const price = parseFloat(row.find('.ordered-unit-price-hidden').val()) || 0;
+        const subtotal = qty * price;
+        row.find('.subtotal-display').val(subtotal.toLocaleString('tr-TR', {minimumFractionDigits: 2}) + ' TL');
+        calculateGrandTotal();
+    }
+
+    function calculateGrandTotal() {
+        let grandTotal = 0;
+        $('.subtotal-display').each(function() {
+            let val = $(this).val().replace(' TL', '').replace(/\./g, '').replace(',', '.');
+            grandTotal += parseFloat(val) || 0;
+        });
+        $('#grand-total').text(grandTotal.toLocaleString('tr-TR', {minimumFractionDigits: 2}) + ' TL');
+    }
+});
+</script>
+{% endblock %}

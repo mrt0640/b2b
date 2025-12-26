@@ -1,0 +1,1 @@
+# Bu dosya, templatetags klasörünün bir Python paketi olarak tanınmasını sağlar.
