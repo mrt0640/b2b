@@ -1,0 +1,67 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>Cari Hesap ve Bakiye Durumu</h2>
+    <p class="text-muted">Güncel borç/alacak durumunuzu buradan takip edebilirsiniz.</p>
+
+    <div class="row mb-4">
+        <div class="col-md-4">
+            <div class="card bg-danger text-white border-0 shadow-sm">
+                <div class="card-body">
+                    <h6>Toplam Sipariş (Borç)</h6>
+                    <h3>{{ total_orders|floatformat:2 }} TL</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card bg-success text-white border-0 shadow-sm">
+                <div class="card-body">
+                    <h6>Yapılan Ödemeler</h6>
+                    <h3>{{ total_payments|floatformat:2 }} TL</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card bg-primary text-white border-0 shadow-sm">
+                <div class="card-body">
+                    <h6>Güncel Bakiye</h6>
+                    <h3>{{ balance|floatformat:2 }} TL</h3>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-header bg-white">
+            <h5 class="mb-0">Son Hareketler</h5>
+        </div>
+        <div class="card-body p-0">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Tarih</th>
+                        <th>İşlem Tipi</th>
+                        <th>Açıklama</th>
+                        <th class="text-end">Tutar</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for activity in activities %}
+                    <tr>
+                        <td>{{ activity.order_date|date:"d.m.Y H:i" }}</td>
+                        <td><span class="badge bg-info">Sipariş</span></td>
+                        <td>#{{ activity.id }} numaralı sipariş kaydı</td>
+                        <td class="text-end text-danger">- {{ activity.total_amount }} TL</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="4" class="text-center py-4">Henüz bir hareket bulunmuyor.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
