@@ -5,7 +5,7 @@
     <div class="container-fluid py-5">
         <h1 class="display-5 fw-bold">Hoş Geldiniz, {{ user.get_username }}!</h1>
         <p class="col-md-8 fs-4">Karabulut Ayıntap Bayi Yönetim Sistemine Giriş Yaptınız. Hızlı sipariş ve cari hesap takibi için menüyü kullanın.</p>
-        <a href="#" class="btn btn-primary btn-lg" type="button">Yeni Sipariş Oluştur</a>
+        <a href="{% url 'management:new_order' %}" class="btn btn-primary btn-lg" type="button">Yeni Sipariş Oluştur</a>
     </div>
 </div>
 
@@ -15,7 +15,7 @@
             <div class="card-body">
                 <h5 class="card-title">Son Siparişler</h5>
                 <p class="card-text">Son 5 siparişinizi ve durumlarını görün.</p>
-                <a href="#" class="btn btn-outline-primary btn-sm">Tümünü Gör</a>
+                <a href="{% url 'management:order_list' %}" class="btn btn-outline-primary btn-sm">Tümünü Gör</a>
             </div>
         </div>
     </div>
