@@ -13,7 +13,7 @@ from django.utils.decorators import method_decorator
 from .permissions import IsDealerUser, IsCourierUser, IsAdminUser, OrderPermissions
 from .models import (
     OrderConfiguration, Product, Dealer, Delivery, OrderItem, Order, 
-    Expense, Collection, Partner, ProfitDistribution, Transaction, Courier, DealerPrice 
+    Expense, Collection, Partner, ProfitDistribution, Transaction, Courier, DealerPrice Category
 )
 from .serializers import (
     ProductSerializer, DealerSerializer, OrderCreateSerializer,

@@ -1,0 +1,43 @@
+{% extends 'management/base.html' %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>Ürün Kataloğu</h2>
+        <form method="GET" class="d-flex w-50">
+            <input type="text" name="q" class="form-control me-2" placeholder="Ürün ara..." value="{{ request.GET.q }}">
+            <button type="submit" class="btn btn-primary">Ara</button>
+        </form>
+    </div>
+
+    <div class="row row-cols-1 row-cols-md-3 g-4">
+        {% for product in products %}
+        <div class="col">
+            <div class="card h-100 shadow-sm">
+                {% if product.image %}
+                <img src="{{ product.image.url }}" class="card-img-top" alt="{{ product.name }}" style="height: 200px; object-fit: contain;">
+                {% endif %}
+                
+                <div class="card-body">
+                    <h5 class="card-title">{{ product.name }}</h5>
+                    <p class="card-text text-muted">{{ product.sku }}</p>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span class="h5 mb-0 text-primary">{{ product.price }} TL</span>
+                        <span class="badge {% if product.stock > 10 %}bg-success{% else %}bg-warning{% endif %}">
+                            Stok: {{ product.stock }}
+                        </span>
+                    </div>
+                </div>
+                <div class="card-footer bg-transparent border-top-0">
+                    <a href="{% url 'management:new_order' %}" class="btn btn-outline-primary w-100">Sipariş Ver</a>
+                </div>
+            </div>
+        </div>
+        {% empty %}
+        <div class="col-12 text-center py-5">
+            <p class="text-muted">Aradığınız kriterlere uygun ürün bulunamadı.</p>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}
