@@ -37,6 +37,34 @@ OrderItemFormSet = inlineformset_factory(
     can_delete=True
 )
 
+@login_required
+def dealer_balance_view(request):
+    dealer = request.user.dealer_profile
+    
+    # Tüm tamamlanmış veya onaylanmış siparişlerin toplamı (Borç)
+    total_orders = Order.objects.filter(dealer=dealer).aggregate(Sum('estimated_total'))['estimated_total__sum'] or 0
+    
+    # Eğer bir Payment (Ödeme) modeliniz varsa ödemeleri buradan çekin
+    # total_payments = Payment.objects.filter(dealer=dealer).aggregate(Sum('amount'))['amount__sum'] or 0
+    total_payments = 0 # Şimdilik 0 varsayıyoruz
+    
+    balance = total_orders - total_payments
+    
+    # Son hareketleri listele (Son 10 sipariş)
+    recent_activities = Order.objects.filter(dealer=dealer).order_by('-order_date')[:10]
+
+    context = {
+        'total_orders': total_orders,
+        'total_payments': total_payments,
+        'balance': balance,
+        'activities': recent_activities,
+        'title': 'Cari Hesap Durumu'
+    }
+    return render(request, 'management/balance.html', context)
+
+
+
+
 # 1. Yeni Sipariş Kaydı ve Stok Düşme
 def new_order(request):
     if request.method == 'POST':
