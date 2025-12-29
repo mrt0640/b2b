@@ -13,7 +13,7 @@ from django.utils.decorators import method_decorator
 from .permissions import IsDealerUser, IsCourierUser, IsAdminUser, OrderPermissions
 from .models import (
     OrderConfiguration, Product, Dealer, Delivery, OrderItem, Order, 
-    Expense, Collection, Partner, ProfitDistribution, Transaction, Courier, DealerPrice Category
+    Expense, Collection, Partner, ProfitDistribution, Transaction, Courier, DealerPrice 
 )
 from .serializers import (
     ProductSerializer, DealerSerializer, OrderCreateSerializer,
@@ -36,6 +36,21 @@ OrderItemFormSet = inlineformset_factory(
     extra=1, 
     can_delete=True
 )
+
+@login_required
+def product_catalog_view(request):
+    query = request.GET.get('q')
+    if query:
+        products = Product.objects.filter(name__icontains=query, is_active=True)
+    else:
+        products = Product.objects.filter(is_active=True)
+    
+    context = {
+        'products': products,
+        'title': 'Ürün Kataloğu'
+    }
+    return render(request, 'management/catalog.html', context)
+
 
 @login_required
 def dealer_balance_view(request):
