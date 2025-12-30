@@ -253,6 +253,13 @@ class Order(models.Model):
         verbose_name_plural = "10.Siparişler"
 
     def save(self, *args, **kwargs):
+        
+        if self.pk:
+            old_status = ReturnRequest.objects.get(pk=self.pk).status
+            if old_status != 'approved' and self.status == 'approved':
+                self.product.current_stock += self.quantity
+                self.product.save()
+        
         ignore_lock = kwargs.pop('ignore_lock', False) 
         
         if self.pk and self.is_locked and not ignore_lock:
@@ -743,3 +750,26 @@ class OrderConfiguration(models.Model):
     
     def __str__(self):
         return "Global Sipariş Ayarları"
+
+class ReturnRequest(models.Model):
+    STATUS_CHOICES = [
+        ('pending', 'Beklemede'),
+        ('approved', 'Onaylandı'),
+        ('rejected', 'Reddedildi'),
+    ]
+
+    order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='returns', verbose_name="İlgili Sipariş")
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, verbose_name="İade Edilen Ürün")
+    quantity = models.PositiveIntegerField(verbose_name="İade Miktarı")
+    reason = models.TextField(verbose_name="İade Sebebi")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending', verbose_name="Durum")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"İade: {self.order.pk} - {self.product.name}"
+
+    class Meta:
+        verbose_name = "İade Talebi"
+        verbose_name_plural = "İade Talepleri"
+
+  

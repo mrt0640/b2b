@@ -19,7 +19,7 @@ from .models import (
     RawMaterial, Recipe, RecipeItem, 
     OrderConfiguration, Partner, 
     ProfitDistribution, Courier,
-    Delivery, Transaction, 
+    Delivery, ReturnRequest, Transaction, 
     Invoice,PartnerProfitShare,
     Unit, # YENİ IMPORT
     UnitConversion
@@ -796,6 +796,13 @@ class OrderAdmin(DealerFilteringAdminMixin, admin.ModelAdmin):
         return redirect(
             reverse('admin:management_order_bulk_delivery') + f'?orders={selected_ids_str}'
         )
+class ReturnRequestInline(admin.TabularInline):
+    model = ReturnRequest
+    extra = 0
+    readonly_fields = ('created_at',)
+
+        # OrderAdmin class'ının içine ekleyin:
+        # inlines = [OrderItemInline, ReturnRequestInline]
 
 # ----------------------------------------------------------------------
 # 4. GLOBAL SİPARİŞ AYARLARI YÖNETİMİ
@@ -1786,3 +1793,18 @@ class UnitAdmin(admin.ModelAdmin):
     list_display = ('name',)
     search_fields = ('name',)
     ordering = ('name',)
+
+@admin.register(ReturnRequest)
+class ReturnRequestAdmin(admin.ModelAdmin):
+    list_display = ('order', 'product', 'quantity', 'status', 'created_at')
+    list_filter = ('status', 'created_at')
+    search_fields = ('order__id', 'product__name')
+    actions = ['approve_returns']
+
+    @admin.action(description='Seçili iadeleri onayla ve stokları güncelle')
+    def approve_returns(self, request, queryset):
+        for return_req in queryset:
+            if return_req.status != 'approved':
+                return_req.status = 'approved'
+                return_req.save() # save metodu içindeki stok mantığı çalışır
+        self.message_user(request, "Seçili iade talepleri onaylandı ve stoklara işlendi.")
