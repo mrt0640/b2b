@@ -1,4 +1,3 @@
-import json
 from django.template.loader import get_template
 from xhtml2pdf import pisa
 from django.http import JsonResponse, HttpResponse
@@ -14,7 +13,7 @@ from django.utils.decorators import method_decorator
 from .permissions import IsDealerUser, IsCourierUser, IsAdminUser, OrderPermissions
 from .models import (
     OrderConfiguration, Product, Dealer, Delivery, OrderItem, Order, 
-    Expense, Collection, Partner, ProfitDistribution, Transaction, Courier, DealerPrice, UnitConversion
+    Expense, Collection, Partner, ProfitDistribution, Transaction, Courier, DealerPrice 
 )
 from .serializers import (
     ProductSerializer, DealerSerializer, OrderCreateSerializer,
@@ -37,49 +36,6 @@ OrderItemFormSet = inlineformset_factory(
     extra=1, 
     can_delete=True
 )
-
-@login_required
-def product_catalog_view(request):
-    query = request.GET.get('q')
-    if query:
-        products = Product.objects.filter(name__icontains=query, is_active=True)
-    else:
-        products = Product.objects.filter(is_active=True)
-    
-    context = {
-        'products': products,
-        'title': 'Ürün Kataloğu'
-    }
-    return render(request, 'management/catalog.html', context)
-
-
-@login_required
-def dealer_balance_view(request):
-    dealer = request.user.dealer_profile
-    
-    # Tüm tamamlanmış veya onaylanmış siparişlerin toplamı (Borç)
-    total_orders = Order.objects.filter(dealer=dealer).aggregate(Sum('estimated_total'))['estimated_total__sum'] or 0
-    
-    # Eğer bir Payment (Ödeme) modeliniz varsa ödemeleri buradan çekin
-    # total_payments = Payment.objects.filter(dealer=dealer).aggregate(Sum('amount'))['amount__sum'] or 0
-    total_payments = 0 # Şimdilik 0 varsayıyoruz
-    
-    balance = total_orders - total_payments
-    
-    # Son hareketleri listele (Son 10 sipariş)
-    recent_activities = Order.objects.filter(dealer=dealer).order_by('-order_date')[:10]
-
-    context = {
-        'total_orders': total_orders,
-        'total_payments': total_payments,
-        'balance': balance,
-        'activities': recent_activities,
-        'title': 'Cari Hesap Durumu'
-    }
-    return render(request, 'management/balance.html', context)
-
-
-
 
 # 1. Yeni Sipariş Kaydı ve Stok Düşme
 def new_order(request):
@@ -165,80 +121,79 @@ def dealer_dashboard_view(request):
 @login_required
 def new_order_view(request):
     """Bayi için yeni sipariş oluşturma sayfasını gösterir ve işler."""
+    
+    # 1. Bayiyi bulma
     try:
         dealer = Dealer.objects.get(user=request.user) 
     except Dealer.DoesNotExist:
         messages.error(request, "Sisteme kayıtlı bayi bilginiz bulunamadı.")
+        # DÜZELTME: Namespacing ile yönlendirme.
         return redirect('management:landing_page') 
 
     if request.method == 'POST':
         order_form = OrderForm(request.POST)
-        formset = OrderItemFormSet(request.POST, instance=Order(), prefix='items') 
+        formset = OrderItemFormSet(request.POST, instance=Order()) 
         
+       
         if order_form.is_valid() and formset.is_valid():
             with transaction.atomic():
+                # 1. Siparişi oluştur (dealer bilgisini ekleyerek)
                 order = order_form.save(commit=False)
                 order.dealer = dealer
                 order.save()
-                
-                items = formset.save(commit=False)
-                total_order_amount = Decimal('0.00')
+            # 2. Formset verilerini al
+            items = formset.save(commit=False)
+            total_order_amount = Decimal('0.00')
 
-                for item in items:
-                    item.order = order
-                    try:
-                        dealer_price_obj = DealerPrice.objects.get(dealer=dealer, product=item.product)
-                        price_to_use = dealer_price_obj.price
-                    except DealerPrice.DoesNotExist:
-                        price_to_use = item.product.selling_price
+            for item in items:
+                item.order = order
             
-                    item.unit_price_at_order = price_to_use
-                    item.save()
-                    total_order_amount += item.get_converted_total()
+                # 3. Bayiye özel fiyat kontrolü
+                try:
+                    dealer_price_obj = DealerPrice.objects.get(dealer=dealer, product=item.product)
+                    price_to_use = dealer_price_obj.price
+                except DealerPrice.DoesNotExist:
+                    price_to_use = item.product.selling_price
+            
+                # Birim fiyatı atıyoruz
+                item.unit_price_at_order = price_to_use
+                item.save()
+                
+                # 4. Satır toplamını hesapla ve genel toplama ekle
+                # get_converted_total metodu unit_price_at_order üzerinden hesaplar
+                total_order_amount += item.get_converted_total()
 
-                    product = item.product
-                    if hasattr(product, 'current_stock'):
-                        # Not: Burada basit stok düşme var, koli bazlı stok düşümü models.py içindeki 
-                        # mantığa göre optimize edilebilir.
-                        product.current_stock -= item.ordered_quantity
-                        product.save()
+                # 5. Stok güncelleme
+                product = item.product
+                if hasattr(product, 'current_stock'):
+                    product.current_stock -= item.ordered_quantity
+                    product.save()
 
-                order.estimated_total = total_order_amount
-                order.save() 
+            # --- KRİTİK NOKTA ---
+            # 6. Siparişin toplam tutarını veritabanına yazıyoruz
+            order.estimated_total = total_order_amount
+            order.save() 
 
-                for deleted_obj in formset.deleted_objects:
-                    deleted_obj.delete()
+            # Formset içindeki silinenleri temizle
+            for deleted_obj in formset.deleted_objects:
+                deleted_obj.delete()
 
-                messages.success(request, f"Sipariş #{order.pk} başarıyla oluşturuldu. Toplam: {order.estimated_total} TL")
-                return redirect(reverse('management:order_list'))
+            messages.success(request, f"Sipariş #{order.pk} başarıyla oluşturuldu. Toplam: {order.estimated_total} TL")
+            return redirect(reverse('management:order_list'))
+                
+                # DÜZELTME: Başarılı siparişten sonra namespacing ile yönlendir.
+            return redirect(reverse('management:order_list'))
+        else:
+            messages.error(request, "Lütfen formdaki hataları düzeltin.")
     else:
+        # GET isteğinde, boş formları oluştur
         order_form = OrderForm()
-        formset = OrderItemFormSet(instance=Order(), prefix='items')
-
-   # BİRİM ÇEVRİMLERİNİ JS İÇİN HAZIRLA
-    conversions = UnitConversion.objects.all().select_related('source_unit', 'target_unit')
-    conv_data = []
-    for c in conversions:
-        # Alan adının ne olduğunu bulmaya çalışalım (Sırasıyla dene)
-        rate = 1.0
-        if hasattr(c, 'conversion_rate'):
-            rate = float(c.conversion_rate)
-        elif hasattr(c, 'rate'):
-            rate = float(c.rate)
-        elif hasattr(c, 'multiplier'):
-            rate = float(c.multiplier)
-        
-        conv_data.append({
-            'source_unit_name': c.source_unit.name,
-            'target_unit_name': c.target_unit.name,
-            'multiplier': rate
-        })
+        formset = OrderItemFormSet(instance=Order())
 
     context = {
         'title': 'Yeni Sipariş Oluştur',
         'order_form': order_form,
         'formset': formset,
-        'conversions_json': json.dumps(conv_data), # Liste olarak gönderdik
     }
     return render(request, 'management/new_order.html', context)
 
@@ -246,27 +201,20 @@ def get_product_info(request):
     product_id = request.GET.get('product_id')
     try:
         product = get_object_or_404(Product, pk=product_id)
+        # Mevcut kullanıcıya bağlı bayiyi alıyoruz
         dealer = Dealer.objects.get(user=request.user)
         
+        # Bayi fiyatı var mı kontrol et, yoksa ürünün genel satış fiyatını al
         dealer_price_obj = DealerPrice.objects.filter(dealer=dealer, product=product).first()
         price = dealer_price_obj.price if dealer_price_obj else product.selling_price
         
-        # Temel birimi ekle
-        units = []
-        if product.unit:
-            units.append({'id': product.unit.id, 'name': product.unit.name, 'multiplier': 1.0})
-        
-        # Çevrim birimlerini ekle
-        conversions = UnitConversion.objects.filter(product=product).select_related('source_unit')
-        for c in conversions:
-            units.append({'id': c.source_unit.id, 'name': c.source_unit.name, 'multiplier': float(c.multiplier)})
-        
         return JsonResponse({
             'price': float(price),
-            'units': units
+            'units': [{'id': product.unit.id, 'name': product.unit.name}] if product.unit else []
         })
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=400)
+
 
 
 # ----------------------------------------------------------------------
@@ -386,47 +334,6 @@ class DeliveryConfirmationView(views.APIView):
             {"detail": "Teslimat onaylandı ve bayi cari hesabına borç kaydedildi."}, 
             status=status.HTTP_200_OK
         )
-    permission_classes = [IsCourierUser]
-
-    def post(self, request, pk):
-        delivery = get_object_or_404(Delivery, pk=pk)
-        # Kuryeden gelen veriler: miktar ve seçilen birim ismi
-        delivered_qty = Decimal(request.data.get('delivered_quantity', 0))
-        selected_unit_id = request.data.get('unit_id') # Veya unit_name
-
-        if delivered_qty <= 0:
-            return Response({"error": "Geçersiz miktar"}, status=status.HTTP_400_BAD_REQUEST)
-
-        # 1. Çarpanı (Multiplier) Bul
-        multiplier = Decimal('1.00')
-        # Ürünün kendi birimi dışında bir birim mi seçilmiş?
-        if selected_unit_id and str(selected_unit_id) != str(delivery.order_item.product.unit_id):
-            conversion = UnitConversion.objects.filter(
-                product=delivery.order_item.product,
-                source_unit_id=selected_unit_id
-            ).first()
-            if conversion:
-                # 'multiplier' yerine modeldeki alan adını (rate/conversion_rate) kullanın
-                multiplier = Decimal(str(getattr(conversion, 'multiplier', conversion.conversion_rate if hasattr(conversion, 'conversion_rate') else 1)))
-
-        # 2. Gerçek Adet Hesapla (Örn: 2 Koli x 24 = 48 Adet)
-        actual_piece_count = delivered_qty * multiplier
-
-        # 3. Stok Güncelleme ve Kayıt
-        with transaction.atomic():
-            product = delivery.order_item.product
-            product.current_stock -= actual_piece_count
-            product.save()
-
-            delivery.status = 'delivered'
-            delivery.actual_quantity = actual_piece_count # Veritabanına ana birim (adet) bazında kaydeder
-            delivery.delivered_at = timezone.now()
-            delivery.save()
-
-        return Response({"message": f"Teslimat onaylandı. Stoktan {actual_piece_count} adet düşüldü."})
-
-
-
 
     @transaction.atomic
     def create_debt_transaction(self, delivery_instance):
@@ -490,37 +397,6 @@ class CourierDeliveryListView(generics.ListAPIView):
             
         except Courier.DoesNotExist:
             raise PermissionDenied("Bu kullanıcı bir Kurye profiline sahip değil.")
-
-def confirm_delivery(request, delivery_id):
-    delivery = get_object_or_404(Delivery, id=delivery_id)
-    order_item = delivery.order_item # Teslim edilen satır
-    
-    # Teslim edilen miktar ve birim kurye formundan gelir
-    delivered_qty = Decimal(request.POST.get('delivered_quantity', 0))
-    selected_unit_name = request.POST.get('unit_name') # Örn: "Koli"
-
-    # Çarpanı bul (Eğer birim Adet değilse)
-    multiplier = 1
-    conversion = UnitConversion.objects.filter(
-        source_unit__name=selected_unit_name,
-        target_unit__name=order_item.product.unit.name # Ürünün ana birimi (Adet)
-    ).first()
-    
-    if conversion:
-        multiplier = conversion.multiplier
-
-    # Gerçek stok düşümü (Adet bazında)
-    actual_deduction = delivered_qty * multiplier
-    
-    # Stoktan düş ve teslimatı onayla
-    product = order_item.product
-    product.current_stock -= actual_deduction
-    product.save()
-    
-    # Teslimat kaydını güncelle
-    delivery.status = 'completed'
-    delivery.actual_delivered_quantity = actual_deduction # Adet cinsinden kaydet
-    delivery.save()
 
 # ----------------------------------------------------------------------
 # 4. BAYİ CARİ HAREKET LİSTESİ API'SI
@@ -612,65 +488,3 @@ def order_pdf(request, pk):
     order = get_object_or_404(Order.objects.prefetch_related('items'), pk=pk)
     context = {'order': order}
     return render_to_pdf('management/order_pdf_template.html', context)
-
-@login_required
-@login_required
-def courier_delivery_list(request):
-    """Kuryenin bekleyen teslimatlarını listeler."""
-    # Kullanıcının kurye profili var mı kontrol et
-    courier = getattr(request.user, 'courier_profile', None)
-    
-    if not courier:
-        # Eğer Courier modelinde user yerine kurye nesnesi aranıyorsa:
-        courier = Courier.objects.filter(user=request.user).first()
-
-    if not courier:
-        messages.error(request, "Kurye yetkiniz bulunmamaktadır.")
-        return redirect('management:landing_page')
-
-    deliveries = Delivery.objects.filter(courier=courier, status='on_the_way')
-    return render(request, 'management/courier_list.html', {
-        'deliveries': deliveries,
-        'title': 'Teslimat Listem'
-    })
-
-@login_required
-@transaction.atomic
-def courier_confirm_delivery(request, delivery_id):
-    """Kurye teslimat yapar ve seçilen birime göre stok düşer."""
-    delivery = get_object_or_404(Delivery, id=delivery_id)
-    product = delivery.order_item.product
-    
-    if request.method == 'POST':
-        qty = Decimal(request.POST.get('quantity', 0))
-        unit_id = request.POST.get('unit_id')
-        
-        # Seçilen birimin çarpanını bul (Birim Çevrimi)
-        multiplier = Decimal('1.0')
-        if str(unit_id) != str(product.unit.id):
-            conv = UnitConversion.objects.filter(product=product, source_unit_id=unit_id).first()
-            if conv:
-                # Modelindeki alan adını (multiplier/rate) buraya yazıyoruz
-                multiplier = Decimal(str(getattr(conv, 'multiplier', 1)))
-
-        total_pieces = qty * multiplier # Stoktan düşecek gerçek ADET
-
-        # 1. Stok Güncelle
-        product.current_stock -= total_pieces
-        product.save()
-
-        # 2. Teslimat Durumunu Güncelle
-        delivery.status = 'delivered'
-        delivery.delivered_at = timezone.now()
-        delivery.save()
-
-        messages.success(request, f"Teslimat tamamlandı. Stoktan {total_pieces} adet düşüldü.")
-        return redirect('management:courier_list')
-
-    # Birimleri Hazırla (Ürünün ana birimi + çevrimleri)
-    units = [{'id': product.unit.id, 'name': product.unit.name, 'multiplier': 1}]
-    conversions = UnitConversion.objects.filter(product=product)
-    for c in conversions:
-        units.append({'id': c.source_unit.id, 'name': c.source_unit.name, 'multiplier': c.multiplier})
-
-    return render(request, 'management/courier_confirm.html', {'delivery': delivery, 'units': units})

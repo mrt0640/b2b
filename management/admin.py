@@ -19,9 +19,9 @@ from .models import (
     RawMaterial, Recipe, RecipeItem, 
     OrderConfiguration, Partner, 
     ProfitDistribution, Courier,
-    Delivery, ReturnRequest, Transaction, 
+    Delivery, Transaction, 
     Invoice,PartnerProfitShare,
-    Unit, # YENİ IMPORT
+    Unit, ReturnRequest, ReturnRequestItem,
     UnitConversion
     
 )
@@ -34,6 +34,8 @@ from .models import convert_unit
 # Lütfen bu yolu kendi sisteminizdeki yolla DEĞİŞTİRİN.
 WKHTMLTOPDF_PATH = 'C:/Program Files/wkhtmltopdf/bin/wkhtmltopdf.exe'
 # **********************************************************************
+
+
 
 def confirm_delivery_action(self, request, queryset):
     # KURYEYİ TESPİT ETME
@@ -439,12 +441,20 @@ class OrderItemInline(admin.TabularInline):
 
 @admin.register(Order)
 class OrderAdmin(DealerFilteringAdminMixin, admin.ModelAdmin):
-    list_display = ('id', 'dealer', 'order_date', 'get_estimated_total_tl', 'status', 'get_delivery_link') 
+    list_display = ('id', 'dealer', 'order_date', 'get_estimated_total_tl', 'status', 'get_delivery_link', 'get_total_amount') 
     list_filter = ('status', 'order_date', 'dealer')
     search_fields = ('dealer__name', 'id')
     inlines = [OrderItemInline]
-    readonly_fields = ('get_estimated_total_tl',) 
+    readonly_fields = ('get_estimated_total_tl', 'get_total_amount') 
+    ordering = ('-order_date',)
     
+    
+    
+    @admin.display(description='Toplam Tutar')
+    def get_total_amount(self, obj):
+        # Order modelindeki @property total_amount'u çağırır
+        return f"{obj.total_amount} TL"
+
     actions = [
         send_to_delivery, generate_invoice, 
         'bulk_delivery_entry',
@@ -489,18 +499,18 @@ class OrderAdmin(DealerFilteringAdminMixin, admin.ModelAdmin):
                 for order_item in order_items_qs:
                     delivery_qs = Delivery.objects.filter(
                         order_item=order_item, 
-                        is_delivered=False
+                        is_confirmed=False
                     )
                     
                     if delivery_qs.exists():
                         # Delivery kayıtlarını güncelle:
                         # - delivered_quantity: Sipariş edilen miktarın tamamı (F ile OrderItem'dan çekilir)
-                        # - is_delivered: True
+                        # - is_confirmed: True
                         # - delivery_date: İşlem anı
                         # - courier: Sistemi kullanan kurye/admin
                         delivery_qs.update(
                             delivered_quantity=F('order_item__ordered_quantity'), 
-                            is_delivered=True,
+                            is_confirmed=True,
                             delivery_date=timezone.now(),
                             courier=system_courier # None veya Admin'in Kurye objesi
                         )
@@ -796,13 +806,6 @@ class OrderAdmin(DealerFilteringAdminMixin, admin.ModelAdmin):
         return redirect(
             reverse('admin:management_order_bulk_delivery') + f'?orders={selected_ids_str}'
         )
-class ReturnRequestInline(admin.TabularInline):
-    model = ReturnRequest
-    extra = 0
-    readonly_fields = ('created_at',)
-
-        # OrderAdmin class'ının içine ekleyin:
-        # inlines = [OrderItemInline, ReturnRequestInline]
 
 # ----------------------------------------------------------------------
 # 4. GLOBAL SİPARİŞ AYARLARI YÖNETİMİ
@@ -951,10 +954,10 @@ class TransactionAdmin(admin.ModelAdmin):
 @admin.register(Collection)
 class CollectionAdmin(admin.ModelAdmin):
     # KRİTİK DÜZELTME: Alan adları models.py'dekiyle eşleştirildi.
-    list_display = ('dealer', 'amount', 'collection_date', 'method') 
-    list_filter = ('collection_date', 'dealer')                      
-    search_fields = ('dealer__name', 'method')
-    ordering = ('-collection_date',)                                 
+    list_display = ('id',  'dealer', 'amount', 'created_at') 
+    list_filter = ('created_at', 'dealer')                      
+    search_fields = ('dealer__name',)
+    ordering = ('-created_at',)                                 
     raw_id_fields = ('dealer',) 
     
     # Tahsilat miktarını formatlı gösterelim
@@ -1751,6 +1754,13 @@ class DeliveryAdmin(admin.ModelAdmin):
     
     raw_id_fields = ('courier', 'order_item') 
     
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        if request.user.is_superuser:
+            return qs
+        # Eğer kullanıcı bir kurye ile ilişkiliyse sadece onun kayıtlarını getir
+        return qs.filter(courier__user=request.user)
+    
     def get_order_id(self, obj):
         return obj.order_item.order.id
     get_order_id.short_description = 'Sipariş ID'
@@ -1772,6 +1782,13 @@ class DeliveryAdmin(admin.ModelAdmin):
     
     def has_module_permission(self, request):
         return request.user.is_superuser
+actions = ['mark_as_delivered']
+
+@admin.action(description='Seçili Teslimatları Onaylandı Olarak İşaretle')
+def mark_as_delivered(self, request, queryset):
+    updated = queryset.update(is_confirmed=True)
+    self.message_user(request, f"{updated} adet teslimat başarıyla onaylandı.")
+
 
 # ----------------------------------------------------------------------
 # 11. BİRİM ÇEVRİM YÖNETİMİ
@@ -1794,17 +1811,44 @@ class UnitAdmin(admin.ModelAdmin):
     search_fields = ('name',)
     ordering = ('name',)
 
+class ReturnRequestItemInline(admin.TabularInline):
+    model = ReturnRequestItem
+    extra = 1
+    fields = ('order_item', 'quantity', 'display_return_price')
+    readonly_fields = ('display_return_price',)
+    
+    @admin.display(description='İade Tutarı')
+    def display_return_price(self, obj):
+        if obj.id:
+            return f"{obj.return_price} TL"
+        return "0.00 TL"
+
+
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        # Sadece ilgili siparişin ürünlerini getirme mantığı (Öncekiyle aynı)
+        object_id = request.resolver_match.kwargs.get('object_id')
+        if db_field.name == "order_item" and object_id:
+            return_obj = ReturnRequest.objects.get(pk=object_id)
+            if return_obj.order:
+                kwargs["queryset"] = return_obj.order.items.all()
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
 @admin.register(ReturnRequest)
 class ReturnRequestAdmin(admin.ModelAdmin):
-    list_display = ('order', 'product', 'quantity', 'status', 'created_at')
-    list_filter = ('status', 'created_at')
-    search_fields = ('order__id', 'product__name')
-    actions = ['approve_returns']
+    list_display = ('dealer', 'order', 'amount', 'status')
+    readonly_fields = ('amount', 'created_at') # Elle müdahaleyi kapattık
+    inlines = [ReturnRequestItemInline]
 
-    @admin.action(description='Seçili iadeleri onayla ve stokları güncelle')
-    def approve_returns(self, request, queryset):
-        for return_req in queryset:
-            if return_req.status != 'approved':
-                return_req.status = 'approved'
-                return_req.save() # save metodu içindeki stok mantığı çalışır
-        self.message_user(request, "Seçili iade talepleri onaylandı ve stoklara işlendi.")
+    def save_related(self, request, form, formsets, change):
+        """Ürünler kaydedildikten sonra toplam tutarı zorla hesaplar."""
+        super().save_related(request, form, formsets, change)
+        
+        # 1. Kaydedilen ürünleri taze olarak çek
+        instance = form.instance
+        # 2. Toplam tutarı yukarıda düzelttiğimiz property üzerinden topla
+        total = sum(item.return_price for item in instance.return_items.all())
+        
+        # 3. Veritabanına doğrudan yaz (update kullanarak save sinyallerini bypass ederiz)
+        # Bu işlem, IntegrityError (NOT NULL) hatasını da kesin engeller.
+        ReturnRequest.objects.filter(pk=instance.pk).update(amount=total)

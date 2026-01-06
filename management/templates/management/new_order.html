@@ -87,7 +87,7 @@
                                 <td>{{ form.ordered_unit }}</td>
                                 <td>
                                     <input type="text" class="form-control form-control-sm text-end bg-light unit-price-display" readonly placeholder="0,00 TL">
-                                    <input type="hidden" name="{{ form.prefix }}-ordered_unit_price" class="ordered-unit-price-hidden" value="0,00">
+                                    <input type="hidden" name="{{ form.prefix }}-ordered_unit_price" class="ordered-unit-price-hidden">
                                 </td>
                                 <td>
                                     <input type="text" class="form-control form-control-sm text-end bg-light subtotal-display" readonly value="0,00 TL">
@@ -152,102 +152,74 @@
 
 {% endblock %}
 
-
 {% block extra_js %}
 <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 <script>
+
 $(document).ready(function() {
     const totalFormsInput = $('#id_items-TOTAL_FORMS');
-    // Django'dan gelen çevrim verileri
-    const allConversions = {{ conversions_json|safe }};
 
-    function attachListeners(row) {
-        // 1. Ürün Seçimi Değiştiğinde
-        row.find('.select-product').on('change', function() {
-            const productId = $(this).val();
-            const $row = $(this).closest('tr');
-            const unitSelect = $row.find('.select-unit');
-            
-            if (productId) {
-                $.ajax({
-                    url: "{% url 'management:get_product_info' %}",
-                    data: { 'product_id': productId },
-                    success: function(data) {
-                        // Temel Adet Fiyatını Sakla
-                        $row.find('.ordered-unit-price-hidden').val(data.price);
-                        
-                        // Birim Dropdown'ını Güncelle
-                        unitSelect.empty();
-                        if (data.units && data.units.length > 0) {
-                            data.units.forEach(u => {
-                                let option = new Option(u.name, u.id);
-                                $(option).attr('data-multiplier', u.multiplier);
-                                unitSelect.append(option);
-                            });
-                        }
-                        calculateSubtotal($row);
+    // DİNLEYİCİ FONKSİYONU (Hem eski hem yeni satırlar için ortak)
+function attachListeners(row) {
+    // 1. Ürün seçimini izle (Mevcut kodun)
+    row.find('.select-product').on('change', function() {
+        const productId = $(this).val();
+        const $row = $(this).closest('tr');
+        if (productId) {
+            $.ajax({
+                url: "{% url 'management:get_product_info' %}",
+                data: { 'product_id': productId },
+                success: function(data) {
+                    // Fiyatı hem gizli alana hem görünür alana yaz
+                    $row.find('.ordered-unit-price-hidden').val(data.price);
+                    $row.find('.unit-price-display').val(data.price.toLocaleString('tr-TR', {minimumFractionDigits: 2}) + ' TL');
+                    
+                    // Birimleri güncelle
+                    let unitSelect = $row.find('.select-unit');
+                    unitSelect.empty();
+                    if (data.units) {
+                        data.units.forEach(u => unitSelect.append(new Option(u.name, u.id)));
                     }
-                });
-            }
-        });
+                    // Fiyat geldikten sonra hemen ara toplamı hesapla
+                    calculateSubtotal($row);
+                }
+            });
+        }
+    });
 
-        // 2. Miktar veya Birim Değiştiğinde Hesapla
-        row.find('.quantity-input, .select-unit').on('input change', function() {
-            calculateSubtotal($(this).closest('tr'));
-        });
+    // 2. Miktar değişimini izle (Ara toplam için)
+    row.find('.quantity-input').on('input', function() {
+        calculateSubtotal($(this).closest('tr'));
+    });
 
-        // 3. Satır Silme
-        row.find('.remove-row-btn').on('click', function() {
-            const $tableBody = $('#order_table tbody');
-            if ($tableBody.find('tr').length > 1) {
-                $(this).closest('tr').remove();
-                calculateGrandTotal();
-                $('#id_items-TOTAL_FORMS').val($tableBody.find('tr').length);
-            } else {
-                alert("En az bir ürün satırı bulunmalıdır.");
-            }
-        });
-    }
-
-    function calculateSubtotal(row) {
-        const basePrice = parseFloat(row.find('.ordered-unit-price-hidden').val()) || 0;
-        const qty = parseFloat(row.find('.quantity-input').val()) || 0;
-        // Seçili birimin çarpanını al (Örn: Koli için 24)
+    // 3. YENİ: SİLME BUTONUNU İZLE
+    row.find('.remove-row-btn').on('click', function() {
+        const $tableBody = $('#order_table tbody');
         
-        const selectedOption = row.find('.select-unit option:selected');
-        const multiplier = parseFloat(selectedOption.attr('data-multiplier')) || 1;
-
-        // Gerçek Birim Fiyat (Temel Fiyat x Çarpan)
-        const effectiveUnitPrice = basePrice * multiplier;
-        const subtotal = qty * effectiveUnitPrice;
-        row.find('.unit-price-display').val(effectiveUnitPrice.toLocaleString('tr-TR', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2
-    }) + ' TL');
-
-    row.find('.subtotal-display').val(subtotal.toLocaleString('tr-TR', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2
-    }) + ' TL');
-        
-        calculateGrandTotal();
-    }
-
-    function calculateGrandTotal() {
-        let grandTotal = 0;
-        $('.subtotal-display').each(function() {
-            let val = $(this).val().replace(' TL', '').replace(/\./g, '').replace(',', '.');
-            grandTotal += parseFloat(val) || 0;
-        });
-        $('#grand-total').text(grandTotal.toLocaleString('tr-TR', {minimumFractionDigits: 2}) + ' TL');
-    }
-
-    // Başlangıç satırlarını aktifleştir
+        // Formda en az bir satır kalmasını garanti edelim
+        if ($tableBody.find('tr').length > 1) {
+            $(this).closest('tr').remove(); // Satırı sil
+            
+            // Satır silindikten sonra genel toplamı güncelle
+            calculateGrandTotal();
+            
+            // Django'nun form sayacını (TOTAL_FORMS) güncelle
+            const currentTotal = $tableBody.find('tr').length;
+            $('#id_items-TOTAL_FORMS').val(currentTotal);
+            
+            console.log("Satır silindi. Kalan satır sayısı: " + currentTotal);
+        } else {
+            alert("En az bir ürün satırı bulunmalıdır.");
+        }
+    });
+}
+    // --- KRİTİK NOKTA: SAYFA YÜKLENDİĞİNDE VAR OLAN SATIRLARI AKTİFLEŞTİR ---
+    // Eğer tablo içinde halihazırda (ilk satır gibi) tr'ler varsa onları döngüye al
     $('#order_table tbody tr').each(function() {
         attachListeners($(this));
     });
 
-    // Yeni satır ekleme
+    // Yeni satır ekleme butonu
     $('#add-row-btn').on('click', function(e) {
         e.preventDefault();
         let formIdx = parseInt(totalFormsInput.val());
@@ -259,6 +231,25 @@ $(document).ready(function() {
             attachListeners($('#order_table tbody tr').last());
         }
     });
+
+    // Hesaplama Fonksiyonları
+    function calculateSubtotal(row) {
+        const qty = parseFloat(row.find('.quantity-input').val()) || 0;
+        // Gizli alandaki ham fiyatı alıyoruz
+        const price = parseFloat(row.find('.ordered-unit-price-hidden').val()) || 0;
+        const subtotal = qty * price;
+        row.find('.subtotal-display').val(subtotal.toLocaleString('tr-TR', {minimumFractionDigits: 2}) + ' TL');
+        calculateGrandTotal();
+    }
+
+    function calculateGrandTotal() {
+        let grandTotal = 0;
+        $('.subtotal-display').each(function() {
+            let val = $(this).val().replace(' TL', '').replace(/\./g, '').replace(',', '.');
+            grandTotal += parseFloat(val) || 0;
+        });
+        $('#grand-total').text(grandTotal.toLocaleString('tr-TR', {minimumFractionDigits: 2}) + ' TL');
+    }
 });
 </script>
 {% endblock %}

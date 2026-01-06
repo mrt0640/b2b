@@ -20,10 +20,7 @@ urlpatterns = [
     path('api/get-product-info/', views.get_product_info, name='get_product_info'),
     path('siparisler/', views.order_list, name='order_list'),
     path('siparis/pdf/<int:pk>/', views.order_pdf, name='order_pdf'),
-    path('balance/', views.dealer_balance_view, name='dealer_balance'),
-    path('catalog/', views.product_catalog_view, name='product_catalog'),
-    path('kurye/teslimatlar/', views.courier_delivery_list, name='courier_list'),
-    path('kurye/onayla/<int:delivery_id>/', views.courier_confirm_delivery, name='courier_confirm'),
+
 ]
     # ... (Diğer url patternleriniz buraya gelecek) ...
     # Router tarafından tanımlanan URL'ler (Admin Finansal İşlemler)

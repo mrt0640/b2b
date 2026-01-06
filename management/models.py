@@ -1,10 +1,13 @@
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from django.db import models
 from django.contrib.auth.models import User
-from django.utils import timezone
+from django.utils import timezone 
 from django.contrib import admin
+from django.db.models.signals import post_save, post_delete
 from django.contrib.contenttypes.models import ContentType
-
+from django.db.models.signals import post_delete
+from django.dispatch import receiver
+from django.core.exceptions import ValidationError 
 # ----------------------------------------------------
 # 1. TEMEL YAPILAR (Unit, Conversion, Helper Functions)
 # ----------------------------------------------------
@@ -18,7 +21,7 @@ class Unit(models.Model):
         
     class Meta:
         verbose_name = "Tanımlı Birim"
-        verbose_name_plural = "05.Birim Tanımları"
+        verbose_name_plural = "Ürün Birim Tanımları"
 
 # ----------------------------------------------------------------------
 # BİRİM ÇEVRİM YARDIMCI FONKSİYONU
@@ -92,7 +95,7 @@ class UnitConversion(models.Model):
     class Meta:
         unique_together = ('source_unit', 'target_unit')
         verbose_name = "Birim Çevrimi" # Eklendi
-        verbose_name_plural = "06.Birim Çevrimleri" # Eklendi
+        verbose_name_plural = "Ürün Birim Çevrimleri" # Eklendi
 
     def __str__(self):
         return f"1 {self.source_unit.name} = {self.conversion_factor} {self.target_unit.name}"
@@ -103,12 +106,26 @@ class UnitConversion(models.Model):
 # ----------------------------------------------------
 
 class Dealer(models.Model):
-    """Bayi Kaydı ve Cari Hesap Bilgisi (Müşteri)"""
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='dealer_profile', verbose_name="Kullanıcı")
     name = models.CharField(max_length=100, verbose_name="Bayi Adı/Unvanı")
     tax_id = models.CharField(max_length=20, unique=True, verbose_name="Vergi Numarası")
-    current_balance = models.DecimalField(max_digits=10, decimal_places=2, default=0.00, verbose_name="Cari Bakiye")
+    # current_balance = models.DecimalField(...) satırını tamamen SİLDİK
 
+    @property
+    def current_balance(self):
+        from django.db.models import Sum, Case, When, F, DecimalField
+        result = self.transactions.aggregate(
+            net_balance=Sum(
+                Case(
+                    When(transaction_type='DEBT', then=F('amount')),       # Faturaları ekle (+)
+                    When(transaction_type__in=['COLLECTION', 'RETURN'], then=-F('amount')), # İade ve Tahsilatları çıkar (-)
+                    output_field=DecimalField()
+                )
+            )
+        )
+        return result['net_balance'] or Decimal('0.00')
+    
+    
     # Bayinin tüm cari hareketlerini (transaction) çeken metod
     @property
     def get_transactions(self):
@@ -117,9 +134,12 @@ class Dealer(models.Model):
         return self.transaction_set.all().order_by('-date')
 
 
+
+
+
     class Meta:
         verbose_name = "Bayi Hesap"
-        verbose_name_plural = "02. Bayi Hesapları"
+        verbose_name_plural = "Bayi Cari Hesapları"
 
     def __str__(self):
         return self.name
@@ -131,17 +151,32 @@ class Courier(models.Model):
 
     class Meta:
         verbose_name = "Kurye"
-        verbose_name_plural = "12.Kuryeler"
+        verbose_name_plural = "Kuryeler"
 
     def __str__(self):
         return self.name
 
+
+
 class Transaction(models.Model):
-    """Bayi cari hesap hareketlerini (borç/alacak) tutar."""
-    TYPE_CHOICES = [
-        ('DEBT', 'Borç (Satış/Fatura)'),
-        ('COLLECTION', 'Alacak (Tahsilat)')
+    TRANSACTION_TYPE_CHOICES = [
+        ('DEBT', 'Borç (Bayi Satış/Fatura)'),
+        ('COLLECTION', 'Bayi Alacak (Tahsilat)'),
+        ('RETURN', 'İade (Bakiye Güncelleme)'),
     ]
+    transaction_type = models.CharField(
+        max_length=20, 
+        choices=TRANSACTION_TYPE_CHOICES, 
+        verbose_name="İşlem Türü"
+    )
+        
+    description = models.CharField(
+        max_length=255, 
+        null=True, blank=True, 
+        verbose_name="Açıklama")
+
+    def __str__(self):
+        return f"{self.dealer.name} - {self.get_transaction_type_display()} - {self.amount} TL"
     
     dealer = models.ForeignKey(
         'Dealer', 
@@ -152,7 +187,7 @@ class Transaction(models.Model):
     
     transaction_type = models.CharField(
         max_length=10, 
-        choices=TYPE_CHOICES, 
+        choices=TRANSACTION_TYPE_CHOICES, 
         verbose_name="Hareket Türü"
     )
     amount = models.DecimalField(
@@ -177,22 +212,22 @@ class Transaction(models.Model):
  
     class Meta:
         verbose_name = "Cari Hesap Hareketi"
-        verbose_name_plural = "04. Hesap Hareketleri"
+        verbose_name_plural = "Bayi Hesap Hareketleri"
 
 
 # ----------------------------------------------------
 # 3. ÜRÜN VE ENVANTER
 # ----------------------------------------------------
 # management/models.py
-class Product(models.Model):
+#class Product(models.Model):
     # ... (mevcut alanlar) ...
     # KRİTİK EKLENTİ
-    current_stock = models.DecimalField(
-        max_digits=10, 
-        decimal_places=2, 
-        default=Decimal('0.00'), 
-        verbose_name="Mevcut Stok Miktarı"
-    )
+#    current_stock = models.DecimalField(
+#        max_digits=10, 
+#        decimal_places=2, 
+#        default=Decimal('0.00'), 
+#        verbose_name="Mevcut Stok Miktarı"
+#    )
 
 
 
@@ -208,9 +243,9 @@ class Product(models.Model):
     vat_rate = models.DecimalField(
         max_digits=5, 
         decimal_places=2, 
-        default=Decimal('0.20'), 
+        default=Decimal('0.01'), 
         verbose_name="Satış KDV Oranı (Decimal)",
-        help_text="Örnek: %20 için 0.20, %10 için 0.10 giriniz."
+        help_text="Örnek: %1 için 0.01, %10 için 0.10 giriniz."
     )
     
     price_vat_included = models.DecimalField(
@@ -222,7 +257,7 @@ class Product(models.Model):
 
     class Meta:
         verbose_name = "Ürün"
-        verbose_name_plural = "07.Ürünler"
+        verbose_name_plural = "Ürünler"
 
     def __str__(self):
         return f"{self.name} ({self.selling_price} TL)"
@@ -237,43 +272,70 @@ class Order(models.Model):
     STATUS_CHOICES = [
         ('NEW', 'Yeni Sipariş'),
         ('PREP', 'Hazırlanıyor'),
-        ('DELIVERY', 'Teslimatta'),
+        ('TESLİMATTA', 'Teslimatta'),
         ('CONFIRMED', 'Teslim Edildi/Tamamlandı'),
         ('INVOICED', 'Faturalandırıldı'),
-        ('CANCELED', 'İptal Edildi'),
+        ('CANCELLED', 'İptal Edildi'),
+        
     ]
-    status = models.CharField(max_length=20, default='PENDING', verbose_name="Sipariş Durumu")
+    status = models.CharField(max_length=20, default='NEW', verbose_name="Sipariş Durumu")
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='NEW', verbose_name="Durum")
     dealer = models.ForeignKey(Dealer, on_delete=models.PROTECT, related_name='orders', verbose_name="Bayi")
     order_date = models.DateTimeField(default=timezone.now, verbose_name="Sipariş Tarihi")
     estimated_total = models.DecimalField(max_digits=10, decimal_places=2, default=0.00, verbose_name="Tahmini Toplam Tutar")
-   
-    class Meta:
-        verbose_name = "Sipariş"
-        verbose_name_plural = "10.Siparişler"
+    is_confirmed = models.BooleanField(default=False, verbose_name="Onaylandı mı?")   
+    
+    
+
+    @property
+    def total_amount(self):
+        """
+        Siparişe bağlı tüm OrderItem kalemlerinin 'total_price' değerlerini toplar.
+        """
+        # items, OrderItem modelindeki related_name='items' referansıdır.
+        return sum(item.total_price for item in self.items.all())
+
+    def full_clean(self, *args, **kwargs):
+        # 1. Önce yuvarlamayı yapıyoruz (Hata denetiminden hemen önce)
+        if self.estimated_total:
+            self.estimated_total = Decimal(str(self.estimated_total)).quantize(
+                Decimal('0.00'), 
+                rounding=ROUND_HALF_UP
+            )
+        # 2. Sonra Django'nun standart denetimini başlatıyoruz
+        super().full_clean(*args, **kwargs)
+
+    def clean(self):
+        # Global Sipariş Kontrolü (Ayar kapalıysa mesaj göster)
+        if not self.pk:
+            config = OrderConfiguration.objects.first()
+            if config and not config.is_ordering_enabled:
+                raise ValidationError("Şu anda sistem yeni sipariş alımına kapalıdır.")
+        super().clean()
 
     def save(self, *args, **kwargs):
+        # Kayıt sırasında denetimleri tekrar çalıştır
+        self.full_clean()
+        super().save(*args, **kwargs)
         
-        if self.pk:
-            old_status = ReturnRequest.objects.get(pk=self.pk).status
-            if old_status != 'approved' and self.status == 'approved':
-                self.product.current_stock += self.quantity
-                self.product.save()
-        
+        # 2. MEVCUT KİLİT MANTIĞI (Bunu aynen koruyoruz)
         ignore_lock = kwargs.pop('ignore_lock', False) 
-        
         if self.pk and self.is_locked and not ignore_lock:
             try:
                 original = Order.objects.get(pk=self.pk)
                 if original.status != self.status:
                      self.status = original.status 
             except Order.DoesNotExist:
-                pass 
-
+                pass
+        self.full_clean()
         super().save(*args, **kwargs)
 
     def __str__(self):
         return f"Sipariş #{self.id} - {self.dealer.name}"
+    
+    class Meta:
+        verbose_name = "Sipariş"
+        verbose_name_plural = "Bayi Siparişler"
 
 class OrderItem(models.Model):
     """Bir Siparişe Ait Ürün Kalemleri (Birim Çevrimini Kullanır)"""
@@ -302,6 +364,8 @@ class OrderItem(models.Model):
     def __str__(self):
         return f"{self.product.name} ({self.ordered_quantity} {self.ordered_unit.name})"
     
+
+
     # KRİTİK: Birim çevrimi ile toplam tutarı hesaplayan metot
     def get_converted_total(self):
         """
@@ -340,7 +404,10 @@ class OrderItem(models.Model):
 
 class Delivery(models.Model):
     """Teslimat ve Onay Kaydı"""
-    order_item = models.OneToOneField(OrderItem, on_delete=models.CASCADE, related_name='delivery', verbose_name="Sipariş Kalemi")
+    order_item = models.OneToOneField(OrderItem, 
+    on_delete=models.CASCADE, 
+    related_name='delivery', 
+    verbose_name="Sipariş Kalemi")
     
     courier = models.ForeignKey(
         Courier,
@@ -357,7 +424,7 @@ class Delivery(models.Model):
 
     class Meta:
         verbose_name = "Teslimat Kaydı"
-        verbose_name_plural = "12.Kurye Teslimat Kayıtları"
+        verbose_name_plural = "Kurye Teslimat Kayıtları"
 
     def __str__(self):
         return f"Teslimat ID:{self.id} - {self.order_item.product.name}"
@@ -368,21 +435,48 @@ class Delivery(models.Model):
 class Invoice(models.Model):
     """Resmi Fatura Kaydı"""
     
+    
     invoice_number = models.CharField(max_length=50, unique=True, verbose_name="Fatura Numarası")
     order = models.OneToOneField('Order', on_delete=models.CASCADE, related_name='invoice', verbose_name="Sipariş")
     dealer = models.ForeignKey('Dealer', on_delete=models.PROTECT, related_name='invoices', verbose_name="Bayi")
     invoice_date = models.DateTimeField(default=timezone.now, verbose_name="Fatura Tarihi")
     final_amount = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="Nihai Tutar")
 
+    @property
+    def items(self):
+        """Faturaya bağlı siparişin kalemlerine kolay erişim sağlar."""
+        return self.order.items.all()
+    
+    @property
+    def total_amount(self):
+        """Siparişteki tüm kalemlerin (OrderItem) toplam tutarını hesaplar."""
+        return sum(item.total_price for item in self.items.all())
+
+
     class Meta:
         verbose_name = "Fatura"
-        verbose_name_plural = "14.Faturalar"
+        verbose_name_plural = "Bayi Faturalar"
         ordering = ['-invoice_date', 'invoice_number']
         
     def __str__(self):
         return f"Fatura #{self.invoice_number} - {self.dealer.name}"
-
-
+    
+    def save(self, *args, **kwargs):
+        is_new = self.pk is None
+        super().save(*args, **kwargs)
+        
+        if is_new:
+            # Fatura kesildiğinde otomatik 'DEBT' (Borç) kaydı oluştur
+            # self.total_amount artık yukarıdaki Order property'sini kullanacak
+            Transaction.objects.create(
+                dealer=self.dealer,
+                amount=self.total_amount,
+                transaction_type='DEBT',
+                transaction_date=timezone.now(),
+                source_model='Invoice',
+                source_id=self.id
+            )
+    
 # ----------------------------------------------------
 # 6. FİNANSAL TAKİP
 # ----------------------------------------------------
@@ -401,60 +495,176 @@ class Expense(models.Model):
     
     class Meta:
         verbose_name = "Gider"
-        verbose_name_plural = "15.Giderler"
+        verbose_name_plural = "Yönetim Giderler"
+
+# ----------------------------------------------------------------------
+# TAHSİLAT MODELİ (GÜNCELLENDİ)
+# ----------------------------------------------------------------------    
 
 class Collection(models.Model):
-    """Tahsilat Giriş Kayıtları"""
-    METHOD_CHOICES = [
-        ('CASH', 'Nakit'),
-        ('BANK', 'Banka Havalesi'),
-        ('CARD', 'Kredi Kartı'),
-    ]
-    dealer = models.ForeignKey(Dealer, on_delete=models.PROTECT, related_name='collections', verbose_name="Bayi")
-    amount = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="Tutar")
-    method = models.CharField(max_length=10, choices=METHOD_CHOICES, default='CASH', verbose_name="Ödeme Yöntemi")
-    collection_date = models.DateTimeField(default=timezone.now, verbose_name="İşlem Tarihi")
+    dealer = models.ForeignKey('Dealer', on_delete=models.CASCADE, related_name='collections', verbose_name="Bayi")
+    amount = models.DecimalField(max_digits=12, decimal_places=2, verbose_name="Tahsilat Tutarı")
+    created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True, verbose_name="Kayıt Tarihi")
 
     def save(self, *args, **kwargs):
-        is_new = not self.pk
-        
-        if is_new:
-            # 1. Borcu DÜŞÜR
-            self.dealer.current_balance -= self.amount
-            self.dealer.save()
-
-            # 2. Cari Hesap Hareketi (Transaction) Oluştur
-            # GFK için ContentType objesini alıyoruz
-            collection_type = ContentType.objects.get_for_model(self) 
-            
-            Transaction.objects.create(
-                dealer=self.dealer,
-                amount=-self.amount, 
-                transaction_type='COLLECTION', 
-                transaction_date=self.collection_date,
-                
-                # KRİTİK DÜZELTME: Generic Foreign Key alanlarını doldur
-                source_model=collection_type, # Hangi model olduğunu belirtir (ContentType)
-                source_id=self.pk            # Kayıt ID'sini belirtir
-            )
-            
         super().save(*args, **kwargs)
 
-    def delete(self, *args, **kwargs):
-        # 1. Bakiye Düzeltmesi: Silme işlemi borcu tekrar artırmalı (ters işlem)
-        self.dealer.current_balance += self.amount
-        self.dealer.save()
-
-        # 2. Cari Hesap Hareketini Sil
-        # Transaction.objects.filter(source_collection=self).delete() # source_collection FK'sı varsa
-        
-        super().delete(*args, **kwargs)
-
-
+    def __str__(self):
+        return f"{self.dealer.name} - {self.amount} TL"
 
     class Meta:
         verbose_name = "Tahsilat"
-        verbose_name_plural = "04.Tahsilatlar"
+        verbose_name_plural = "Bayi Tahsilatlar"
+
+class ReturnRequest(models.Model):
+    RETURN_STATUS = [
+        ('PENDING', 'Onay Bekliyor'),
+        ('APPROVED', 'Onaylandı (Bakiyeye İşlendi)'),
+        ('REJECTED', 'Reddedildi'),
+    ]
+    amount = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0, 
+        null=True, blank=True, verbose_name="Toplam İade Tutarı"
+    )
+    def calculate_total(self):
+        """Alt ürünleri toplar ve tutarı günceller."""
+        total = sum(item.return_price for item in self.return_items.all())
+        # .save() yerine .update() kullanarak sinyal döngülerini ve hataları engelliyoruz
+        ReturnRequest.objects.filter(pk=self.pk).update(amount=total)
+        return total
+    
+    
+    def save(self, *args, **kwargs):
+        # Kayıt anında bir şekilde None gelirse 0'a çek
+        if self.amount is None:
+            self.amount = 0
+        super().save(*args, **kwargs)
+    
+    
+    
+    dealer = models.ForeignKey(Dealer, on_delete=models.CASCADE, related_name='returns', verbose_name="Bayi")
+    order = models.ForeignKey(Order, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="İlgili Sipariş")
+    amount = models.DecimalField(max_digits=12, decimal_places=2, verbose_name="İade Tutarı")
+    reason = models.TextField(verbose_name="İade Nedeni")
+    status = models.CharField(max_length=20, choices=RETURN_STATUS, default='PENDING', verbose_name="Durum")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def update_total_amount(self):
+        """Tüm ürünlerin iade tutarlarını toplar ve kaydeder."""
+        total = sum(item.return_price for item in self.return_items.all())
+        self.amount = total
+        # Sadece amount alanını güncellemek için save_base kullanabiliriz 
+        # veya normal save() çağırabiliriz.
+        ReturnRequest.objects.filter(pk=self.pk).update(amount=total)
+        return total
+    
+    
+    def __str__(self):
+        return f"{self.dealer.name} - {self.amount} TL İade Talebi"
+
+    class Meta:
+        verbose_name = "İade Talebi"
+        verbose_name_plural = "Bayi İade Talepleri"
+
+class ReturnRequestItem(models.Model):
+    return_request = models.ForeignKey(ReturnRequest, on_delete=models.CASCADE, related_name='return_items')
+    order_item = models.ForeignKey('OrderItem', on_delete=models.CASCADE, verbose_name="İade Edilen Ürün")
+    quantity = models.PositiveIntegerField(default=1, verbose_name="İade Miktarı")
+    
+    
+    @property
+    def return_price(self):
+        """
+        Siparişteki gerçek birim fiyatı (unit_price_at_order) baz alır.
+        """
+        if self.order_item:
+            # Sizin modelinizde fiyatın adı 'unit_price_at_order'
+            # getattr kullanarak güvenli bir şekilde çekiyoruz
+            u_price = getattr(self.order_item, 'unit_price_at_order', 0)
+            if not u_price: # Eğer boşsa 0 olarak kabul et
+                u_price = 0
+            return u_price * self.quantity
+        return 0
+    
+    def __str__(self):
+        return f"{self.return_request.dealer.name} - {self.order_item.product.name} - {self.quantity} Adet"
+    
+    class Meta:
+        verbose_name = "İade Edilen Ürün"
+        verbose_name_plural = "İade Edilen Ürünler"
+
+# ----------------------------------------------------------------------
+# SİNYALLER (OTOMATİK BAKİYE VE SİLME YÖNETİMİ)
+# ----------------------------------------------------------------------
+@receiver(post_save, sender=Collection, dispatch_uid="unique_collection_save_v2")
+def manage_collection_transaction(sender, instance, created, **kwargs):
+    """Tahsilat eklendiğinde Transaction (Cari Hareket) oluşturur."""
+    if created:
+        Transaction.objects.create(
+            dealer=instance.dealer,
+            amount=instance.amount,
+            transaction_type='COLLECTION',
+            transaction_date=instance.created_at or timezone.now(),
+            source_model='Collection',
+            source_id=instance.id,
+            description=f"Tahsilat: #{instance.id}"
+        )
+
+@receiver(post_delete, sender=Collection)
+def auto_delete_transaction_on_collection_delete(sender, instance, **kwargs):
+    """Tahsilat silindiğinde (toplu veya tekli) ilgili cari hareketi de siler."""
+    Transaction.objects.filter(
+        source_model='Collection',
+        source_id=instance.id
+    ).delete()
+
+@receiver(post_delete, sender=Invoice)
+def auto_delete_transaction_on_invoice_delete(sender, instance, **kwargs):
+    """Fatura silindiğinde ilgili cari hareketi siler."""
+    Transaction.objects.filter(
+        source_model='Invoice',
+        source_id=instance.id
+    ).delete()
+
+
+
+
+@receiver(post_save, sender=ReturnRequest)
+def process_return_approval(sender, instance, created, **kwargs):
+    """
+    İade talebi APPROVED ise: Transaction oluştur veya var olanı GÜNCELLE.
+    İade talebi APPROVED değilse: Varsa Transaction'ı SİL.
+    """
+    if instance.status == 'APPROVED':
+        # Varsa getir, yoksa oluştur (get_or_create)
+        transaction, created_now = Transaction.objects.get_or_create(
+            source_model='ReturnRequest',
+            source_id=instance.id,
+            defaults={
+                'dealer': instance.dealer,
+                'amount': instance.amount,
+                'transaction_type': 'RETURN',
+                'description': f"İade Onayı: #{instance.id}"
+            }
+        )
+
+        # Eğer zaten varsa ama tutar değişmişse güncelle
+        if not created_now and transaction.amount != instance.amount:
+            transaction.amount = instance.amount
+            transaction.dealer = instance.dealer # Bayi değişmişse onu da güncelle
+            transaction.save()
+            
+    else:
+        # Eğer durum APPROVED dışında bir şeye çekilirse (PENDING, REJECTED)
+        # Bayinin bakiyesinin hatalı kalmaması için o hareketi siliyoruz.
+        Transaction.objects.filter(
+            source_model='ReturnRequest', 
+            source_id=instance.id
+        ).delete()
+
+
+
+
 
 
 class Partner(models.Model):
@@ -505,7 +715,7 @@ class Partner(models.Model):
 
     class Meta:
         verbose_name = "Ortak"
-        verbose_name_plural = "80. Ortaklar ve Oranları"
+        verbose_name_plural = "Yönetim Ortaklar"
 
 # YENİ MODEL: Partnerlerin o aydan aldığı payı tutacak
 class PartnerProfitShare(models.Model):
@@ -538,7 +748,7 @@ class PartnerProfitShare(models.Model):
 
     class Meta:
         verbose_name = "Ortak Kâr Payı"
-        verbose_name_plural = "Ortak Kâr Payları"
+        verbose_name_plural = "Yönetim  Kâr Payı"
         # Bir ortak, aynı dağıtım kaydında sadece bir kez yer alabilir
         unique_together = ('distribution', 'partner')
 
@@ -576,7 +786,7 @@ class ProfitDistribution(models.Model):
 
     class Meta:
         verbose_name = "Kâr Dağıtımı"
-        verbose_name_plural = "90. Kâr Dağıtımı Yönetimi"
+        verbose_name_plural = "Kâr Dağıtımı Yönetimi"
         unique_together = ('month', 'year') # Bir ay için sadece bir kayıt olabilir
 # ----------------------------------------------------
 # 7. REÇETE VE HAMMADDE
@@ -600,7 +810,7 @@ class RawMaterial(models.Model):
 
     class Meta:
         verbose_name = "Hammadde"
-        verbose_name_plural = "08.Hammaddeler"
+        verbose_name_plural = "Üretim Hammade"
 
 
 class Recipe(models.Model):
@@ -675,7 +885,7 @@ class Recipe(models.Model):
 
     class Meta:
         verbose_name = "Ürün Reçetesi"
-        verbose_name_plural = "09.Ürün Reçeteleri"
+        verbose_name_plural = "Üretim Reçeteleri"
 
 
 class RecipeItem(models.Model):
@@ -734,7 +944,7 @@ class DealerPrice(models.Model):
 
     class Meta:
         verbose_name = "Bayi Özel Fiyatı"
-        verbose_name_plural = "04.Bayi Satış Fiyat Tanımlama"
+        verbose_name_plural = "Bayi Satış Fiyat Tanımlama"
         unique_together = ('dealer', 'product')
 
 class OrderConfiguration(models.Model):
@@ -746,30 +956,27 @@ class OrderConfiguration(models.Model):
     
     class Meta:
         verbose_name = "Global Sipariş Ayarı"
-        verbose_name_plural = "10.Sipariş Kontrol"
+        verbose_name_plural = "Bayi Sipariş Kontrol"
     
     def __str__(self):
         return "Global Sipariş Ayarları"
 
-class ReturnRequest(models.Model):
-    STATUS_CHOICES = [
-        ('pending', 'Beklemede'),
-        ('approved', 'Onaylandı'),
-        ('rejected', 'Reddedildi'),
-    ]
 
-    order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='returns', verbose_name="İlgili Sipariş")
-    product = models.ForeignKey(Product, on_delete=models.CASCADE, verbose_name="İade Edilen Ürün")
-    quantity = models.PositiveIntegerField(verbose_name="İade Miktarı")
-    reason = models.TextField(verbose_name="İade Sebebi")
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending', verbose_name="Durum")
-    created_at = models.DateTimeField(auto_now_add=True)
+from django.dispatch import receiver
+from django.utils import timezone
 
-    def __str__(self):
-        return f"İade: {self.order.pk} - {self.product.name}"
 
-    class Meta:
-        verbose_name = "İade Talebi"
-        verbose_name_plural = "İade Talepleri"
 
-  
+@receiver(post_delete, sender=Collection, dispatch_uid="unique_collection_delete")
+def auto_delete_transaction_on_collection_delete(sender, instance, **kwargs):
+    Transaction.objects.filter(
+        source_model='Collection',
+        source_id=instance.id
+    ).delete()
+
+@receiver(post_delete, sender=Invoice, dispatch_uid="unique_invoice_delete")
+def auto_delete_transaction_on_invoice_delete(sender, instance, **kwargs):
+    Transaction.objects.filter(
+        source_model='Invoice',
+        source_id=instance.id
+    ).delete()
