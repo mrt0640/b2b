@@ -1,5 +1,6 @@
 from django.template.loader import get_template
 from xhtml2pdf import pisa
+from io import BytesIO
 from django.http import JsonResponse, HttpResponse
 from decimal import Decimal
 from django.contrib.auth.decorators import login_required
@@ -12,7 +13,7 @@ from django.utils import timezone
 from django.utils.decorators import method_decorator
 from .permissions import IsDealerUser, IsCourierUser, IsAdminUser, OrderPermissions
 from .models import (
-    OrderConfiguration, Product, Dealer, Delivery, OrderItem, Order, 
+    OrderConfiguration, Product, RecipeItem, Dealer, Delivery, OrderItem, Order, 
     Expense, Collection, Partner, ProfitDistribution, Transaction, Courier, DealerPrice 
 )
 from .serializers import (
@@ -472,6 +473,13 @@ class ProductListView(generics.ListAPIView):
 def render_to_pdf(template_src, context_dict={}):
     template = get_template(template_src)
     html  = template.render(context_dict)
+    result = BytesIO()
+    pdf = pisa.pisaDocument(BytesIO(html.encode("UTF-8")), result, encoding='utf-8')
+    
+    options = {
+        'encoding': "UTF-8",
+        'quiet': '',
+    }
     response = HttpResponse(content_type='application/pdf')
     # İndirme ismini belirle
     response['Content-Disposition'] = 'attachment; filename="siparis.pdf"'
@@ -491,37 +499,35 @@ def order_pdf(request, pk):
 
 @login_required
 def production_pdf_view(request):
-    # 1. Filtreleri al
-    start_date = request.GET.get('start_date')
-    end_date = request.GET.get('end_date')
     ids = request.GET.get('ids')
+    if not ids:
+        return HttpResponse("Lütfen sipariş seçin.")
 
-    # 2. Queryset oluştur
-    queryset = OrderItem.objects.all()
-
-    # Eğer Admin'den seçili siparişler geldiyse:
-    if ids:
-        id_list = ids.split(',')
-        queryset = queryset.filter(order_id__in=id_list)
-    else:
-        # Eğer tarih seçildiyse (Örn: /?start_date=2024-01-01&end_date=2024-01-02)
-        if start_date and end_date:
-            queryset = queryset.filter(order__order_date__range=[start_date, end_date])
-        # Varsayılan olarak sadece 'ONAYLANDI' durumundakileri göster
-        queryset = queryset.filter(order__status='ONAYLANDI')
-
-    # 3. Gruplama ve Toplama
-    production_data = queryset.values(
-        'product__name', 
-        'product__unit_of_measure'
+    id_list = ids.split(',')
+    
+    # 1. Ürün Bazlı Toplamlar (Aynı kalıyor)
+    product_totals = OrderItem.objects.filter(order_id__in=id_list).values(
+        'product__name'
     ).annotate(
-        total_qty=Sum('ordered_quantity')
+        total_quantity=Sum('ordered_quantity')
     ).order_by('product__name')
 
+    # 2. Hammadde Bazlı Toplamlar (HATA VEREN KISIM BURASIYDI)
+    material_totals = RecipeItem.objects.filter(
+        recipe__product__orderitem__order_id__in=id_list
+    ).values(
+        'raw_material__name'
+    ).annotate(
+        needed_amount=Sum(F('quantity_required') * F('recipe__product__orderitem__ordered_quantity')),
+        # Birimi burada 'birim' ismiyle basitçe tanımlıyoruz:
+        birim=F('raw_material__unit__name') 
+    ).order_by('raw_material__name')
+
     context = {
-        'production_data': production_data,
+        'product_totals': product_totals,
+        'material_totals': material_totals,
         'date': timezone.now(),
-        'start_date': start_date,
-        'end_date': end_date,
+        'order_count': len(id_list)
     }
-    return render_to_pdf('management/production_pdf_template.html', context)
+    
+    return render_to_pdf('management/production_list_pdf.html', context)

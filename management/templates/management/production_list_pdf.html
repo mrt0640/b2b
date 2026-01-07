@@ -1,0 +1,48 @@
+<style>
+    .section-title { background: #f2f2f2; padding: 10px; font-weight: bold; border: 1px solid #000; margin-top: 20px; }
+    .summary-box { border: 1px solid #000; padding: 10px; margin-bottom: 20px; }
+</style>
+
+<div class="summary-box">
+    <strong>URETIM OZETI</strong><br>
+    Tarih: {{ date|date:"d.m.Y H:i" }}<br>
+    Toplam Siparis: {{ order_count }} adet
+</div>
+
+<div class="section-title">1. URETILIECEK URUN LISTESI (MAMULLER)</div>
+<table>
+    <thead>
+        <tr>
+            <th>Urun Adi</th>
+            <th>Toplam Uretim Miktari</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for p in product_totals %}
+        <tr>
+            <td>{{ p.product__name }}</td>
+            <td>{{ p.total_quantity }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<div class="section-title">2. GEREKLI HAMMADDE LISTESI (DEPO CIKIS)</div>
+<table>
+    <thead>
+        <tr>
+            <th>Hammadde Adi</th>
+            <th>Gereken Toplam Miktar</th>
+        </tr>
+    </thead>
+    <tbody>
+     {% for m in material_totals %}
+<tr>
+    <td>{{ m.raw_material__name }}</td>
+    <td>
+        {{ m.needed_amount|floatformat:2 }} 
+        {{ m.birim }} </td>
+</tr>
+{% endfor %}
+    </tbody>
+</table>
