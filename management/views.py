@@ -488,3 +488,40 @@ def order_pdf(request, pk):
     order = get_object_or_404(Order.objects.prefetch_related('items'), pk=pk)
     context = {'order': order}
     return render_to_pdf('management/order_pdf_template.html', context)
+
+@login_required
+def production_pdf_view(request):
+    # 1. Filtreleri al
+    start_date = request.GET.get('start_date')
+    end_date = request.GET.get('end_date')
+    ids = request.GET.get('ids')
+
+    # 2. Queryset oluştur
+    queryset = OrderItem.objects.all()
+
+    # Eğer Admin'den seçili siparişler geldiyse:
+    if ids:
+        id_list = ids.split(',')
+        queryset = queryset.filter(order_id__in=id_list)
+    else:
+        # Eğer tarih seçildiyse (Örn: /?start_date=2024-01-01&end_date=2024-01-02)
+        if start_date and end_date:
+            queryset = queryset.filter(order__order_date__range=[start_date, end_date])
+        # Varsayılan olarak sadece 'ONAYLANDI' durumundakileri göster
+        queryset = queryset.filter(order__status='ONAYLANDI')
+
+    # 3. Gruplama ve Toplama
+    production_data = queryset.values(
+        'product__name', 
+        'product__unit_of_measure'
+    ).annotate(
+        total_qty=Sum('ordered_quantity')
+    ).order_by('product__name')
+
+    context = {
+        'production_data': production_data,
+        'date': timezone.now(),
+        'start_date': start_date,
+        'end_date': end_date,
+    }
+    return render_to_pdf('management/production_pdf_template.html', context)

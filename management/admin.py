@@ -1,6 +1,7 @@
 from django.contrib.auth.models import User # User modelini import ettiğinizden emin olun.
 from datetime import timedelta
 from django.conf import settings 
+import platform
 import pdfkit 
 from decimal import Decimal
 from .forms import BulkDeliveryForm 
@@ -29,11 +30,12 @@ from .models import (
 # Eğer models.py'ye eklediyseniz, bu satırı kullanın:
 from .models import convert_unit 
 
-# **********************************************************************
-# KRİTİK AYAR: wkhtmltopdf.exe'nin TAM YOLU
-# Lütfen bu yolu kendi sisteminizdeki yolla DEĞİŞTİRİN.
-WKHTMLTOPDF_PATH = 'C:/Program Files/wkhtmltopdf/bin/wkhtmltopdf.exe'
-# **********************************************************************
+# Hem kendi bilgisayarınızda hem de sunucuda çalışması için:
+if platform.system() == "Windows":
+    WKHTMLTOPDF_PATH = 'C:/Program Files/wkhtmltopdf/bin/wkhtmltopdf.exe'
+else:
+    # PythonAnywhere (Linux) üzerindeki yol
+    WKHTMLTOPDF_PATH = '/usr/bin/wkhtmltopdf'
 
 
 
@@ -441,7 +443,7 @@ class OrderItemInline(admin.TabularInline):
 
 @admin.register(Order)
 class OrderAdmin(DealerFilteringAdminMixin, admin.ModelAdmin):
-    list_display = ('id', 'dealer', 'order_date', 'get_estimated_total_tl', 'status', 'get_delivery_link', 'get_total_amount') 
+    list_display = ('id', 'dealer', 'order_date', 'get_estimated_total_tl', 'status', 'get_delivery_link', 'get_total_amount', 'status') 
     list_filter = ('status', 'order_date', 'dealer')
     search_fields = ('dealer__name', 'id')
     inlines = [OrderItemInline]
@@ -459,8 +461,19 @@ class OrderAdmin(DealerFilteringAdminMixin, admin.ModelAdmin):
         send_to_delivery, generate_invoice, 
         'bulk_delivery_entry',
         'confirm_delivery_action', # Toplu Teslimat Onayı (önceki)
-        'confirm_orders_and_deliver_action' # Yeni Sipariş ve Teslimat Onayı
+        'confirm_orders_and_deliver_action', # Yeni Sipariş ve Teslimat Onayı
+        'imalat_listesi_al'
     ] 
+    @admin.action(description='Seçili Siparişleri İmalat Listesine Yazdır')
+    def imalat_listesi_al(self, request, queryset):
+        # Seçilen siparişlerin ID'lerini alıp URL'e parametre olarak gönderiyoruz
+        selected_ids = ",".join([str(q.id) for q in queryset])
+        return redirect(f"/management/production-report/pdf/?ids={selected_ids}")
+    # Admin listesinin üstüne genel bir buton eklemek isterseniz:
+    def changelist_view(self, request, extra_context=None):
+        extra_context = extra_context or {}
+        extra_context['production_button'] = True
+        return super().changelist_view(request, extra_context=extra_context)
 
     # Yeni Action: Siparişi Onayla ve Tüm Teslimatları Yapılmış Olarak İşaretle
     @admin.action(description="Seçilen siparişleri onayla ve teslimatları tamamla (Sistem)")
