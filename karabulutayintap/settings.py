@@ -24,7 +24,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = 'django-insecure-=zzak%@j@+ipc^np7&=eu*j#kz#fc11#n#r!2ag+%i!i=+sp7v'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = False
 
 ALLOWED_HOSTS = ['djangomurat.pythonanywhere.com', '127.0.0.1', 'localhost']
 
