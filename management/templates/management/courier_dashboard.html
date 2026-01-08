@@ -1,0 +1,45 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="container mt-4">
+    <h3 class="mb-4 text-center">Teslimat Listesi</h3>
+    
+    <div class="row">
+        {% for order in orders %}
+        <div class="col-12 mb-3">
+            <div class="card shadow-sm border-primary">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <h5 class="card-title mb-1">{{ order.dealer.name }}</h5>
+                            <p class="text-muted small mb-2">
+                                <i class="bi bi-geo-alt-fill"></i> {{ order.dealer.address|default:"Adres Belirtilmemiş" }}
+                            </p>
+                        </div>
+                        <span class="badge bg-warning text-dark">{{ order.status }}</span>
+                    </div>
+
+                    <div class="d-grid gap-2 d-md-block mt-2">
+                        <a href="{% url 'management:courier_delivery_update' order.pk %}" class="btn btn-primary">
+                            <i class="bi bi-box-seam"></i> Teslimat Gir
+                        </a>
+                        
+                        {% if order.dealer.phone %}
+                        <a href="tel:{{ order.dealer.phone }}" class="btn btn-success">
+                            <i class="bi bi-telephone"></i> Ara
+                        </a>
+                        {% endif %}
+                        
+                        <a href="https://www.google.com/maps/search/?api=1&query={{ order.dealer.address|urlencode }}" 
+                           target="_blank" class="btn btn-outline-secondary">
+                            <i class="bi bi-map"></i> Yol Tarifi
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% empty %}
+        <div class="alert alert-info text-center">Şu an teslimat bekleyen sipariş bulunmuyor.</div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

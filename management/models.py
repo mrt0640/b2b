@@ -218,16 +218,7 @@ class Transaction(models.Model):
 # ----------------------------------------------------
 # 3. ÜRÜN VE ENVANTER
 # ----------------------------------------------------
-# management/models.py
-#class Product(models.Model):
-    # ... (mevcut alanlar) ...
-    # KRİTİK EKLENTİ
-#    current_stock = models.DecimalField(
-#        max_digits=10, 
-#        decimal_places=2, 
-#        default=Decimal('0.00'), 
-#        verbose_name="Mevcut Stok Miktarı"
-#    )
+
 
 
 
@@ -356,6 +347,7 @@ class OrderItem(models.Model):
         blank=True, 
         verbose_name="Sipariş Anındaki Birim Fiyat (Ürün Ana Birimi Cinsinden)"
     )
+    delivered_quantity = models.DecimalField(max_digits=10, decimal_places=2, default=0)
 
     class Meta:
         verbose_name = "Sipariş Kalemi"

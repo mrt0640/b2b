@@ -1,0 +1,97 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="container mt-4">
+    <h3>Teslimat Formu - Sipariş #{{ order.id }}</h3>
+    <p>Bayi: {{ order.dealer.name }}</p>
+
+    <form method="post">
+        {% csrf_token %}
+        <div class="table-responsive">
+            <table class="table table-bordered">
+                <thead class="table-light">
+                    <tr>
+                        <th>Ürün</th>
+                        <th width="120">Koli Girişi</th>
+                        <th width="150">Teslim Miktarı</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in order.items.all %}
+                    <tr>
+                        <td>
+                            {{ item.product.name }}<br>
+                            <small class="text-muted">Birim Fiyat: {{ item.unit_price_at_order }} TL</small>
+                        </td>
+                        <td>
+                            <input type="number" step="0.01" class="form-control calc-box" 
+                                   data-rate="{{ item.product.conversion_rate|default:1 }}" 
+                                   data-target="qty_{{ item.id }}" placeholder="Koli">
+                        </td>
+                        <td>
+                            <div class="input-group">
+                                <input type="number" name="delivered_{{ item.id }}" id="qty_{{ item.id }}" 
+                                       class="form-control" value="{{ item.delivered_quantity }}" step="0.01">
+                                <span class="input-group-text">{{ item.product.unit.name }}</span>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="card mt-3 border-primary">
+            <div class="card-body">
+                <h6>+ Yeni Ürün Ekle (Ek Teslimat)</h6>
+                <div class="row g-2">
+                    <div class="col-8">
+                        <select name="add_product_id" class="form-select">
+                            <option value="">Ürün Seçin...</option>
+                            {% for p in all_products %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-4">
+                        <input type="number" name="add_qty" class="form-control" placeholder="Adet">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <button type="submit" class="btn btn-success w-100 mt-4 mb-5">TESLİMATI KAYDET VE BİTİR</button>
+    </form>
+</div>
+<div class="card mt-4 border-info">
+    <div class="card-header bg-info text-white">
+        <i class="bi bi-plus-circle"></i> Ek Ürün Teslimatı (Siparişte Olmayan)
+    </div>
+    <div class="card-body">
+        <div class="row g-2">
+            <div class="col-8">
+                <select name="add_product_id" class="form-select">
+                    <option value="">Ürün Seçiniz...</option>
+                    {% for p in all_products %}
+                    <option value="{{ p.id }}">{{ p.name }} ({{ p.selling_price }} TL)</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-4">
+                <input type="number" name="add_qty" class="form-control" placeholder="Adet" min="0">
+            </div>
+        </div>
+        <p class="text-muted small mt-2">Müşteri siparişte olmayan bir ürün isterse buradan ekleyebilirsiniz.</p>
+    </div>
+</div>
+<script>
+// Birim çevrim sihirbazı
+document.querySelectorAll('.calc-box').forEach(box => {
+    box.addEventListener('input', function() {
+        const rate = parseFloat(this.dataset.rate);
+        const targetId = this.dataset.target;
+        const targetInput = document.getElementById(targetId);
+        if (this.value) {
+            targetInput.value = (parseFloat(this.value) * rate).toFixed(2);
+        }
+    });
+});
+</script>
+{% endblock %}

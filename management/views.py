@@ -93,29 +93,40 @@ def order_list(request):
     })
 
 
-
-# 1. LANDING PAGE VIEW
 def landing_page_view(request):
     """Projenin ana giriş/karşılama sayfası."""
-    # Eğer kullanıcı giriş yapmışsa, onu doğrudan dashboard'a yönlendir
     if request.user.is_authenticated:
-        # DÜZELTME: Namespacing (management:) kullanılıyor.
+        # 1. ÖNCELİK: Kurye Kontrolü
+        # Kullanıcı kurye grubundaysa başka hiçbir yere bakma, direkt kurye paneline gönder
+        if request.user.groups.filter(name='Kurye').exists():
+            return redirect('management:courier_dashboard')
+        
+        # 2. Admin Kontrolü
+        if request.user.is_staff or request.user.is_superuser:
+            return redirect('management:order_list')
+            
+        # 3. Bayi Kontrolü
         return redirect('management:dealer_dashboard') 
     
-    context = {
-        'title': 'Karabulut Ayıntap B2B Sistemi',
-    }
+    context = {'title': 'Karabulut Ayıntap B2B'}
     return render(request, 'management/landing_page.html', context)
-
 
 @login_required 
 def dealer_dashboard_view(request):
-    """Bayilerin sipariş, cari hesap vb. göreceği ana sayfa."""
+    # --- YÖNLENDİRME KONTROLÜ BAŞLANGIÇ ---
+    # Giriş yapan kullanıcı "Kurye" grubundaysa bayi ekranını görmesin, kurye ekranına gitsin
+    if request.user.groups.filter(name='Kurye').exists():
+        return redirect('management:courier_dashboard')
     
+    # Eğer admin ise ve bayi ekranını değil de sipariş listesini görmek istiyorsa:
+    # if request.user.is_staff:
+    #     return redirect('management:order_list')
+    # --- YÖNLENDİRME KONTROLÜ BİTİŞ ---
+
+    # Mevcut bayi dashboard kodlarınız burada devam eder...
     context = {
-        'user': request.user,
-        'welcome_message': f"Hoş geldiniz, {request.user.get_username()}!",
-        # Diğer dashboard verileri...
+        'title': 'Bayi Paneli',
+        # ... diğer veriler
     }
     return render(request, 'management/dashboard.html', context)
 
@@ -531,3 +542,96 @@ def production_pdf_view(request):
     }
     
     return render_to_pdf('management/production_list_pdf.html', context)
+
+
+
+@login_required
+def courier_delivery_update(request, pk):
+    from .models import Product, OrderItem, Order
+    from decimal import Decimal
+    # 1. Yetki ve Veri Çekme
+    if not (request.user.groups.filter(name='Kurye').exists() or request.user.is_superuser):
+        raise PermissionDenied("Erişim yetkiniz yok.")
+
+    order = get_object_or_404(Order.objects.prefetch_related('items__product'), pk=pk)
+
+    # 2. Kayıt İşlemi (POST)
+    if request.method == 'POST':
+        try:
+            with transaction.atomic():
+                # Mevcut ürünlerin miktarlarını güncelle
+                for item in order.items.all():
+                    val = request.POST.get(f'delivered_{item.id}')
+                    if val is not None:
+                        item.delivered_quantity = Decimal(val)
+                        item.save()
+
+                # --- YENİ ÜRÜN EKLEME (Kuryenin sahada eklediği) ---
+                new_product_id = request.POST.get('add_product_id')
+                new_qty = request.POST.get('add_qty')
+                
+                if new_product_id and new_qty:
+                    try:
+                        qty_value = Decimal(new_qty)
+                        if qty_value > 0:
+                            from .models import Product, OrderItem
+                            product = Product.objects.get(id=new_product_id)
+                            selected_unit = product.unit
+
+                            if selected_unit:
+                            # YENİ ÜRÜN OLUŞTURMA
+                                OrderItem.objects.create(
+                                    order=order,
+                                    product=product,
+                                    # Kurye eklediği için sipariş miktarı 0, teslim edilen girilen rakam
+                                    ordered_quantity=0, 
+                                    delivered_quantity=qty_value, 
+                                    ordered_unit=selected_unit, # <--- Birim hatasını bu çözer
+                                    unit_price_at_order=product.selling_price
+                                )
+                            else:
+                                messages.warning(request, f"{product.name} ürününün birimi olmadığı için eklenemedi.")
+                    except (InvalidOperation, ValueError):
+                        messages.error(request, "Geçersiz miktar girildi.")
+
+                    # KRİTİK DÜZELTME: Product modelinizdeki 'unit' alanını alıyoruz
+                    
+                    
+                # --- STATÜ GÜNCELLEME ---
+                # Buradaki 'TESLIM_EDILDI' kısmını bir önceki hatada çıkan 
+                # geçerli teknik isimle (Admin panelindeki seçim değeriyle) değiştirin.
+                order.status = 'CONFIRMED'  # Örnek: 'TESLIM_EDILDI'
+                order.save()
+                
+                messages.success(request, f"{order.pk} nolu sipariş kaydedildi.")
+                return redirect('management:courier_dashboard')
+            
+        except Exception as e:
+            messages.error(request, f"Hata oluştu: {str(e)}")
+
+    # 3. Sayfa Görüntüleme (GET)
+    all_products = Product.objects.filter(is_active=True)
+    context = {
+        'order': order,
+        'all_products': all_products,
+    }
+    return render(request, 'management/courier_delivery_form.html', context)
+
+
+@login_required
+def courier_dashboard(request):
+    # Yetki kontrolü
+    is_courier = request.user.groups.filter(name='Kurye').exists()
+    if not (is_courier or request.user.is_superuser):
+        return redirect('management:landing_page')
+
+    # icontains veya iexact kullanarak büyük/küçük harf duyarlılığını kaldıralım
+    # Ayrıca statünün tam olarak ne olduğunu görmek için print ekleyelim (Terminalden bakarsınız)
+    orders = Order.objects.filter(status__icontains='TESLİMATTA').order_by('-order_date')
+
+    
+    # Hata ayıklama için terminale yazdıralım (Sadece geliştirme aşamasında)
+    print(f"Sistemde bulunan sipariş sayısı: {Order.objects.count()}")
+    print(f"Kurye ekranına giden sipariş sayısı: {orders.count()}")
+
+    return render(request, 'management/courier_dashboard.html', {'orders': orders})
