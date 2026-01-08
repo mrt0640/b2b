@@ -1,0 +1,57 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2><i class="bi bi-journal-text"></i> Cari Hesap Ekstresi</h2>
+        <div class="text-end">
+            <span class="text-muted">Güncel Bakiye:</span>
+            <h3 class="text-primary">{{ balance|floatformat:2 }} TL</h3>
+        </div>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <table class="table table-striped align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>Tarih</th>
+                        <th>İşlem Tipi</th>
+                        <th>Açıklama</th>
+                        <th class="text-end">Borç (+)</th>
+                        <th class="text-end">Alacak (-)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for trans in transactions %}
+                    <tr>
+                        <td>{{ trans.date|date:"d.m.Y" }}</td>
+                        <td>
+                            {% if trans.transaction_type == 'DEBT' %}
+                                <span class="badge bg-danger">Fatura / Borç</span>
+                            {% else %}
+                                <span class="badge bg-success">Tahsilat / İade</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ trans.description|default:"Sistem İşlemi" }}</td>
+                        <td class="text-end text-danger">
+                            {% if trans.transaction_type == 'DEBT' %}
+                                {{ trans.amount|floatformat:2 }} TL
+                            {% else %}-{% endif %}
+                        </td>
+                        <td class="text-end text-success">
+                            {% if trans.transaction_type != 'DEBT' %}
+                                {{ trans.amount|floatformat:2 }} TL
+                            {% else %}-{% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="5" class="text-center py-4">Henüz bir hareket bulunmuyor.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

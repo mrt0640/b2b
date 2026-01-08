@@ -1,3 +1,4 @@
+# management/views.py
 from django.template.loader import get_template
 #from xhtml2pdf import pisa
 from io import BytesIO
@@ -93,8 +94,24 @@ def order_list(request):
     })
 
 
-from django.shortcuts import render, redirect
+def order_detail_view(request, order_id):
+    # Siparişi getir (Sadece ilgili bayinin görmesi için güvenliği de ekleyelim)
+    order = get_object_or_404(Order, id=order_id)
+    
+    # Sipariş kalemlerini çekiyoruz (related_name='items' olduğunu varsayıyorum)
+    items = order.items.all() 
+    
+    context = {
+        'order': order,
+        'items': items,
+        'title': f'Sipariş Detayı #{order.id}'
+    }
+    return render(request, 'management/order_detail.html', context)
 
+
+
+
+from django.shortcuts import render, redirect
 def landing_page_view(request):
     """Projenin ana giriş/karşılama sayfası."""
     
@@ -129,94 +146,108 @@ def landing_page_view(request):
 
 @login_required 
 def dealer_dashboard_view(request):
-    # --- YÖNLENDİRME KONTROLÜ BAŞLANGIÇ ---
-    # Giriş yapan kullanıcı "Kurye" grubundaysa bayi ekranını görmesin, kurye ekranına gitsin
-    if request.user.groups.filter(name='Kurye').exists():
-        return redirect('management:courier_dashboard')
+    try:
+        # 1. Giriş yapan kullanıcıya ait "Dealer" profilini buluyoruz
+        # Not: Dealer modelinizde User'a bağlı alanın adı 'user' varsayılmıştır
+        current_dealer = Dealer.objects.get(user=request.user)
+        # Modelinizdeki property'yi çağırıyoruz
+        balance = current_dealer.current_balance
+        # 2. Sorguyu bu Dealer nesnesi üzerinden yapıyoruz
+        last_orders = Order.objects.filter(dealer=current_dealer).order_by('-order_date')[:5]
     
-    # Eğer admin ise ve bayi ekranını değil de sipariş listesini görmek istiyorsa:
-    # if request.user.is_staff:
-    #     return redirect('management:order_list')
-    # --- YÖNLENDİRME KONTROLÜ BİTİŞ ---
+    except Dealer.DoesNotExist:
+        balance = 0
+        # Eğer bu kullanıcıya tanımlı bir Dealer profili yoksa boş liste döndür
+        last_orders = []
 
-    # Mevcut bayi dashboard kodlarınız burada devam eder...
     context = {
-        'title': 'Bayi Paneli',
-        # ... diğer veriler
+        'balance': balance,
+        'last_orders': last_orders,
+        'welcome_message': 'Yönetim sistemine hoş geldiniz.',
     }
     return render(request, 'management/dashboard.html', context)
 
+def dealer_transactions_view(request):
+    try:
+        current_dealer = Dealer.objects.get(user=request.user)
+        # 'date' yerine 'transaction_date' kullanıyoruz
+        transactions = current_dealer.transactions.all().order_by('-transaction_date')
+        balance = current_dealer.current_balance
+    except Dealer.DoesNotExist:
+        transactions = []
+        balance = 0
+
+    context = {
+        'transactions': transactions,
+        'balance': balance,
+        'title': 'Cari Hesap Hareketleri'
+    }
+    return render(request, 'management/dealer_transactions.html', context)
+
+
 @login_required
 def new_order_view(request):
-    """Bayi için yeni sipariş oluşturma sayfasını gösterir ve işler."""
-    
-    # 1. Bayiyi bulma
     try:
         dealer = Dealer.objects.get(user=request.user) 
     except Dealer.DoesNotExist:
         messages.error(request, "Sisteme kayıtlı bayi bilginiz bulunamadı.")
-        # DÜZELTME: Namespacing ile yönlendirme.
         return redirect('management:landing_page') 
 
     if request.method == 'POST':
         order_form = OrderForm(request.POST)
-        formset = OrderItemFormSet(request.POST, instance=Order()) 
+        # KRİTİK: HTML'de 'items' prefix'i kullandığınız için burada da belirtmelisiniz
+        formset = OrderItemFormSet(request.POST, prefix='items') 
         
-       
         if order_form.is_valid() and formset.is_valid():
-            with transaction.atomic():
-                # 1. Siparişi oluştur (dealer bilgisini ekleyerek)
-                order = order_form.save(commit=False)
-                order.dealer = dealer
-                order.save()
-            # 2. Formset verilerini al
-            items = formset.save(commit=False)
-            total_order_amount = Decimal('0.00')
+            try:
+                with transaction.atomic():
+                    # 1. Siparişi oluştur
+                    order = order_form.save(commit=False)
+                    order.dealer = dealer
+                    order.save()
 
-            for item in items:
-                item.order = order
-            
-                # 3. Bayiye özel fiyat kontrolü
-                try:
-                    dealer_price_obj = DealerPrice.objects.get(dealer=dealer, product=item.product)
-                    price_to_use = dealer_price_obj.price
-                except DealerPrice.DoesNotExist:
-                    price_to_use = item.product.selling_price
-            
-                # Birim fiyatı atıyoruz
-                item.unit_price_at_order = price_to_use
-                item.save()
+                    # 2. Formset verilerini siparişe bağlayarak kaydet
+                    formset.instance = order
+                    items = formset.save(commit=False)
+                    
+                    total_order_amount = Decimal('0.00')
+
+                    for item in items:
+                        # Bayiye özel fiyat kontrolü
+                        dealer_price_obj = DealerPrice.objects.filter(dealer=dealer, product=item.product).first()
+                        price_to_use = dealer_price_obj.price if dealer_price_obj else item.product.selling_price
                 
-                # 4. Satır toplamını hesapla ve genel toplama ekle
-                # get_converted_total metodu unit_price_at_order üzerinden hesaplar
-                total_order_amount += item.get_converted_total()
+                        item.unit_price_at_order = price_to_use
+                        item.save()
+                        
+                        # Toplam tutar hesaplama
+                        # Not: get_converted_total metodunuzun doğru çalıştığından emin olun
+                        total_order_amount += item.get_converted_total()
 
-                # 5. Stok güncelleme
-                product = item.product
-                if hasattr(product, 'current_stock'):
-                    product.current_stock -= item.ordered_quantity
-                    product.save()
+                        # Stok güncelleme
+                        product = item.product
+                        if hasattr(product, 'current_stock'):
+                            product.current_stock -= item.ordered_quantity
+                            product.save()
 
-            # --- KRİTİK NOKTA ---
-            # 6. Siparişin toplam tutarını veritabanına yazıyoruz
-            order.estimated_total = total_order_amount
-            order.save() 
+                    # 3. Formset içindeki silinenleri temizle
+                    for deleted_obj in formset.deleted_objects:
+                        deleted_obj.delete()
 
-            # Formset içindeki silinenleri temizle
-            for deleted_obj in formset.deleted_objects:
-                deleted_obj.delete()
+                    # 4. Genel toplamı güncelle
+                    order.estimated_total = total_order_amount
+                    order.save() 
 
-            messages.success(request, f"Sipariş #{order.pk} başarıyla oluşturuldu. Toplam: {order.estimated_total} TL")
-            return redirect(reverse('management:order_list'))
-                
-                # DÜZELTME: Başarılı siparişten sonra namespacing ile yönlendir.
-            return redirect(reverse('management:order_list'))
+                messages.success(request, f"Sipariş #{order.pk} başarıyla oluşturuldu. Toplam: {order.estimated_total} TL")
+                return redirect(reverse('management:order_list'))
+            
+            except Exception as e:
+                messages.error(request, f"Sipariş kaydedilirken bir hata oluştu: {str(e)}")
         else:
             messages.error(request, "Lütfen formdaki hataları düzeltin.")
     else:
-        # GET isteğinde, boş formları oluştur
         order_form = OrderForm()
-        formset = OrderItemFormSet(instance=Order())
+        formset = OrderItemFormSet(prefix='items') # GET durumunda da prefix önemli
 
     context = {
         'title': 'Yeni Sipariş Oluştur',
@@ -224,7 +255,6 @@ def new_order_view(request):
         'formset': formset,
     }
     return render(request, 'management/new_order.html', context)
-
 def get_product_info(request):
     product_id = request.GET.get('product_id')
     try:
