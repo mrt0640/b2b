@@ -14,7 +14,7 @@ from django.utils.html import format_html
 from django.db import transaction, models
 from django.shortcuts import render, redirect, get_object_or_404
 from django.utils import timezone
-from .views import DeliveryConfirmationView
+#from .views import DeliveryConfirmationView
 from .models import (
     Order, Dealer, OrderItem, Collection, Expense, Product, DealerPrice,
     RawMaterial, Recipe, RecipeItem,
