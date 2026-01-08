@@ -24,7 +24,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = 'django-insecure-=zzak%@j@+ipc^np7&=eu*j#kz#fc11#n#r!2ag+%i!i=+sp7v'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = False
+DEBUG = True
 
 ALLOWED_HOSTS = ['djangomurat.pythonanywhere.com', '127.0.0.1', 'localhost']
 
@@ -162,7 +162,7 @@ ADMIN_INDEX_TITLE = "Pastane Yönetimi Kontrol Paneli"
 
 # Başarılı girişten sonra kullanıcıyı nereye yönlendireceğimizi belirtir.
 # Bu, /accounts/profile/ varsayılanını geçersiz kılar.
-LOGIN_REDIRECT_URL = '/admin/' 
+LOGIN_REDIRECT_URL = '/' 
 
 # Not: Eğer logout yapıldığında ana sayfaya yönlendirmek isterseniz:
 LOGOUT_REDIRECT_URL = '/'

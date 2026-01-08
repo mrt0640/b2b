@@ -93,22 +93,38 @@ def order_list(request):
     })
 
 
+from django.shortcuts import render, redirect
+
 def landing_page_view(request):
     """Projenin ana giriş/karşılama sayfası."""
+    
     if request.user.is_authenticated:
-        # 1. ÖNCELİK: Kurye Kontrolü
-        # Kullanıcı kurye grubundaysa başka hiçbir yere bakma, direkt kurye paneline gönder
-        if request.user.groups.filter(name='Kurye').exists():
-            return redirect('management:courier_dashboard')
+        # Kullanıcının tüm grup isimlerini alalım
+        user_groups = request.user.groups.values_list('name', flat=True)
         
-        # 2. Admin Kontrolü
-        if request.user.is_staff or request.user.is_superuser:
-            return redirect('management:order_list')
+        # 1. ÖNCELİK: Yetkili (Admin) Grubu
+        if 'Yetkili' in user_groups:
+            return redirect('/admin/') # Direkt standart admin paneline veya management:order_list'e
             
-        # 3. Bayi Kontrolü
+        # 2. ÖNCELİK: Kurye Grubu
+        if 'Kurye' in user_groups:
+            return redirect('management:courier_dashboard')
+            
+        # 3. ÖNCELİK: Bayiler Grubu
+        if 'Bayiler' in user_groups:
+            return redirect('management:dealer_dashboard')
+
+        # 4. YEDEK KONTROL: Eğer grupta değilse ama staff yetkisi varsa
+        if request.user.is_staff or request.user.is_superuser:
+            return redirect('/admin/')
+            
+        # Hiçbiri değilse varsayılan
         return redirect('management:dealer_dashboard') 
     
-    context = {'title': 'Karabulut Ayıntap B2B'}
+    context = {
+        'title': 'Karabulut Ayıntap B2B',
+        'slogan': 'Hızlı Sipariş ve Güvenli Teslimat'
+    }
     return render(request, 'management/landing_page.html', context)
 
 @login_required 
@@ -576,9 +592,9 @@ def courier_delivery_update(request, pk):
                         if qty_value > 0:
                             from .models import Product, OrderItem
                             product = Product.objects.get(id=new_product_id)
-                            selected_unit = product.unit
-
-                            if selected_unit:
+                            product_unit = product.unit
+                            
+                            if product_unit:
                             # YENİ ÜRÜN OLUŞTURMA
                                 OrderItem.objects.create(
                                     order=order,
@@ -586,7 +602,7 @@ def courier_delivery_update(request, pk):
                                     # Kurye eklediği için sipariş miktarı 0, teslim edilen girilen rakam
                                     ordered_quantity=0, 
                                     delivered_quantity=qty_value, 
-                                    ordered_unit=selected_unit, # <--- Birim hatasını bu çözer
+                                    ordered_unit=product_unit, # <--- Birim hatasını bu çözer
                                     unit_price_at_order=product.selling_price
                                 )
                             else:
