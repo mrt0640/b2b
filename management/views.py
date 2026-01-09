@@ -144,27 +144,22 @@ def landing_page_view(request):
     }
     return render(request, 'management/landing_page.html', context)
 
-@login_required 
+@login_required
 def dealer_dashboard_view(request):
     try:
-        # 1. Giriş yapan kullanıcıya ait "Dealer" profilini buluyoruz
-        # Not: Dealer modelinizde User'a bağlı alanın adı 'user' varsayılmıştır
         current_dealer = Dealer.objects.get(user=request.user)
-        # Modelinizdeki property'yi çağırıyoruz
-        balance = current_dealer.current_balance
-        # 2. Sorguyu bu Dealer nesnesi üzerinden yapıyoruz
-        last_orders = Order.objects.filter(dealer=current_dealer).order_by('-order_date')[:5]
-    
+        # Örnek olarak en güncel 4 veya 8 ürünü çekiyoruz
+        products = Product.objects.filter(is_active=True)[:8] 
+        
+        context = {
+            'products': products,
+            'balance': current_dealer.current_balance,
+            'last_orders': Order.objects.filter(dealer=current_dealer).order_by('-order_date')[:5],
+            'welcome_message': 'Yönetim sistemine hoş geldiniz.',
+        }
     except Dealer.DoesNotExist:
-        balance = 0
-        # Eğer bu kullanıcıya tanımlı bir Dealer profili yoksa boş liste döndür
-        last_orders = []
+        context = {'products': [], 'balance': 0, 'last_orders': []}
 
-    context = {
-        'balance': balance,
-        'last_orders': last_orders,
-        'welcome_message': 'Yönetim sistemine hoş geldiniz.',
-    }
     return render(request, 'management/dashboard.html', context)
 
 def dealer_transactions_view(request):
@@ -187,6 +182,11 @@ def dealer_transactions_view(request):
 
 @login_required
 def new_order_view(request):
+    product_id = request.GET.get('product_id') # URL'den ID'yi al
+    initial_data = {}
+    if product_id:
+        initial_data['product'] = product_id # Form açıldığında bu ürün seçili gelsin
+    
     try:
         dealer = Dealer.objects.get(user=request.user) 
     except Dealer.DoesNotExist:
@@ -254,7 +254,9 @@ def new_order_view(request):
         'order_form': order_form,
         'formset': formset,
     }
-    return render(request, 'management/new_order.html', context)
+    #return render(request, 'management/new_order.html', context)
+    return render(request, 'management/new_order.html', {'form': form})
+
 def get_product_info(request):
     product_id = request.GET.get('product_id')
     try:

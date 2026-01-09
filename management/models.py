@@ -228,6 +228,9 @@ class Product(models.Model):
     selling_price = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="Satış Fiyatı")
     is_active = models.BooleanField(default=True, verbose_name="Aktif Satışta mı?")
 
+    image = models.ImageField(upload_to='products/', null=True, blank=True, verbose_name="Ürün Görseli")
+    description = models.TextField(null=True, blank=True, verbose_name="Ürün Açıklaması")
+    
     # Satış Birimi (Unit modeline Foreign Key)
     unit = models.ForeignKey(Unit, on_delete=models.SET_NULL, null=True, verbose_name="Ana Birim")
     

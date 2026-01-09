@@ -1,12 +1,12 @@
 {% extends 'base.html' %} 
 {% block title %}Bayi Dashboard{% endblock %}
 
-{% block content %}
+{{% block content %}
 <div class="p-4 mb-4 bg-primary text-white rounded-3 shadow">
     <div class="container-fluid py-3">
         <h1 class="display-6 fw-bold">Selam, {{ user.first_name|default:user.username }}!</h1>
-        <p class="fs-5">Bugün yeni bir sipariş vermek ister misin? Hemen Üretime Başlayalım.</p>
-        <a href="{% url 'management:new_order' %}" class="btn btn-light btn-lg fw-bold">
+        <p class="fs-5">Bugün yeni bir sipariş vermek ister misin? Üretime Başlayalım</p>
+        <a href="{% url 'management:new_order' %}" class="btn btn-light">
             <i class="bi bi-plus-circle"></i> Yeni Sipariş Oluştur
         </a>
     </div>
@@ -85,4 +85,117 @@
         </div>
     </div>
 </div>
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h4 class="fw-bold mb-0">Popüler Ürünler</h4>
+            <a href="{% url 'management:new_order' %}" class="btn btn-sm btn-primary">Tümünü Gör</a>
+        </div>
+    </div>
+    
+    {% for product in products %}
+    <div class="col-md-3 mb-4">
+        <div class="card h-100 shadow-sm border-0 product-card">
+            <div class="p-3 text-center bg-light rounded-top">
+                {% if product.image %}
+                    <img src="{{ product.image.url }}" class="img-fluid" style="height: 140px; object-fit: contain;">
+                {% else %}
+                    <img src="/static/img/no-image.png" class="img-fluid" style="height: 140px; opacity: 0.5;">
+                {% endif %}
+            </div>
+            
+            <div class="card-body p-3">
+                <h6 class="card-title fw-bold mb-1">{{ product.name }}</h6>
+                <p class="text-muted small mb-2 text-truncate">{{ product.description|default:"Ürün açıklaması bulunmuyor." }}</p>
+                
+                <div class="d-flex justify-content-between align-items-center">
+                    <span class="fw-bold text-primary">{{ product.selling_price|floatformat:2 }} TL</span>
+                    <span class="badge bg-secondary opacity-75">{{ product.unit.name }}</span>
+                </div>
+                
+                <button class="btn btn-outline-success btn-sm w-100 mt-3 quick-add" data-id="{{ product.id }}">
+                    <i class="bi bi-cart-plus"></i> Siparişe Ekle
+                </button>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
 {% endblock content %}
+
+<div class="row mt-5">
+    <div class="col-12 mb-4">
+        <h4 class="fw-bold text-dark border-start border-primary border-4 ps-3">
+            Hızlı Sipariş Kataloğu
+        </h4>
+    </div>
+
+    {% for product in products %}
+    <div class="col-md-3 col-sm-6 mb-4">
+        <div class="card h-100 shadow-sm border-0 product-card">
+            <div class="text-center p-3 bg-light" onclick="showProduct('{{ product.name }}', '{{ product.image.url }}', '{{ product.description|escapejs }}', '{{ product.selling_price }}')" style="cursor:zoom-in;">
+                {% if product.image %}
+                    <img src="{{ product.image.url }}" class="img-fluid" style="max-height: 140px; object-fit: contain;">
+                {% else %}
+                    <i class="bi bi-box-seam text-secondary opacity-50" style="font-size: 3rem;"></i>
+                {% endif %}
+            </div>
+
+            <div class="card-body d-flex flex-column text-center">
+                <h6 class="fw-bold mb-1">{{ product.name }}</h6>
+                <p class="text-muted small mb-2">{{ product.description|truncatechars:50|default:"Kaliteli üretim, hızlı teslimat." }}</p>
+                
+                <div class="mt-auto">
+                    <div class="h5 fw-bold text-primary mb-3">
+                        {{ product.selling_price|floatformat:2 }} TL
+                    </div>
+                    <a href="{% url 'management:new_order' %}?product_id={{ product.id }}" class="btn btn-primary w-100 rounded-pill">
+                        <i class="bi bi-cart-plus"></i> Siparişe Ekle
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<style>
+    .product-card {
+        transition: all 0.3s ease;
+        border-radius: 15px;
+    }
+    .product-card:hover {
+        transform: translateY(-10px);
+        box-shadow: 0 15px 30px rgba(0,0,0,0.1) !important;
+    }
+    .bg-soft-primary {
+        background-color: #e7f1ff;
+    }
+</style>
+
+<div class="modal fade" id="productModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 shadow">
+      <div class="modal-header border-0">
+        <h5 class="modal-title fw-bold" id="m_name"></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body text-center">
+        <img id="m_img" src="" class="img-fluid rounded mb-3" style="max-height: 300px;">
+        <p id="m_desc" class="text-muted"></p>
+        <h4 id="m_price" class="text-primary fw-bold"></h4>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function showProduct(name, img, desc, price) {
+    document.getElementById('m_name').innerText = name;
+    document.getElementById('m_img').src = img;
+    document.getElementById('m_desc').innerText = desc;
+    document.getElementById('m_price').innerText = price + " TL";
+    var myModal = new bootstrap.Modal(document.getElementById('productModal'));
+    myModal.show();
+}
+</script>
