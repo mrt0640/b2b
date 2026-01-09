@@ -182,10 +182,10 @@ def dealer_transactions_view(request):
 
 @login_required
 def new_order_view(request):
-    product_id = request.GET.get('product_id') # URL'den ID'yi al
+    product_id = request.GET.get('product_id') 
     initial_data = {}
     if product_id:
-        initial_data['product'] = product_id # Form açıldığında bu ürün seçili gelsin
+        initial_data['product'] = product_id 
     
     try:
         dealer = Dealer.objects.get(user=request.user) 
@@ -194,51 +194,42 @@ def new_order_view(request):
         return redirect('management:landing_page') 
 
     if request.method == 'POST':
+        # Değişken adı: order_form
         order_form = OrderForm(request.POST)
-        # KRİTİK: HTML'de 'items' prefix'i kullandığınız için burada da belirtmelisiniz
         formset = OrderItemFormSet(request.POST, prefix='items') 
         
         if order_form.is_valid() and formset.is_valid():
             try:
                 with transaction.atomic():
-                    # 1. Siparişi oluştur
                     order = order_form.save(commit=False)
                     order.dealer = dealer
                     order.save()
 
-                    # 2. Formset verilerini siparişe bağlayarak kaydet
                     formset.instance = order
                     items = formset.save(commit=False)
                     
                     total_order_amount = Decimal('0.00')
 
                     for item in items:
-                        # Bayiye özel fiyat kontrolü
                         dealer_price_obj = DealerPrice.objects.filter(dealer=dealer, product=item.product).first()
                         price_to_use = dealer_price_obj.price if dealer_price_obj else item.product.selling_price
                 
                         item.unit_price_at_order = price_to_use
                         item.save()
-                        
-                        # Toplam tutar hesaplama
-                        # Not: get_converted_total metodunuzun doğru çalıştığından emin olun
                         total_order_amount += item.get_converted_total()
 
-                        # Stok güncelleme
                         product = item.product
                         if hasattr(product, 'current_stock'):
                             product.current_stock -= item.ordered_quantity
                             product.save()
 
-                    # 3. Formset içindeki silinenleri temizle
                     for deleted_obj in formset.deleted_objects:
                         deleted_obj.delete()
 
-                    # 4. Genel toplamı güncelle
                     order.estimated_total = total_order_amount
                     order.save() 
 
-                messages.success(request, f"Sipariş #{order.pk} başarıyla oluşturuldu. Toplam: {order.estimated_total} TL")
+                messages.success(request, f"Sipariş #{order.pk} başarıyla oluşturuldu.")
                 return redirect(reverse('management:order_list'))
             
             except Exception as e:
@@ -246,16 +237,17 @@ def new_order_view(request):
         else:
             messages.error(request, "Lütfen formdaki hataları düzeltin.")
     else:
-        order_form = OrderForm()
-        formset = OrderItemFormSet(prefix='items') # GET durumunda da prefix önemli
+        # Değişken adı: order_form
+        order_form = OrderForm(initial=initial_data) # initial_data'yı burada kullandık
+        formset = OrderItemFormSet(prefix='items')
 
     context = {
         'title': 'Yeni Sipariş Oluştur',
-        'order_form': order_form,
+        'order_form': order_form, # HTML'de {{ order_form }} olarak kullanılmalı
         'formset': formset,
     }
-    #return render(request, 'management/new_order.html', context)
-    return render(request, 'management/new_order.html', {'form': form})
+    # HATALI SATIR BURASIYDI: {'form': form} yerine context gönderilmeli
+    return render(request, 'management/new_order.html', context)
 
 def get_product_info(request):
     product_id = request.GET.get('product_id')
