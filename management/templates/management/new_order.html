@@ -28,7 +28,7 @@
         {% endfor %}
     {% endif %}
 
-    <form method="post" action="{% url 'management:new_order' %}" id="order-form">
+    <form method="post" action="{% if order %}{% url 'management:order_edit' order.pk %}{% else %}{% url 'management:new_order' %}{% endif %}" id="order-form">
         {% csrf_token %}
         
         <div class="card shadow mb-4">

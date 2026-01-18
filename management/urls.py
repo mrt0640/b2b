@@ -25,7 +25,9 @@ urlpatterns = [
     path('courier/dashboard/', views.courier_dashboard, name='courier_dashboard'),
     path('courier/delivery/<int:pk>/', views.courier_delivery_update, name='courier_delivery_update'),
     path('order/<int:order_id>/', views.order_detail_view, name='order_detail'),
-    path('cari-hareketler/', views.dealer_transactions_view, name='dealer_transactions')
+    path('cari-hareketler/', views.dealer_transactions_view, name='dealer_transactions'),
+    path('order/edit/<int:pk>/', views.edit_order_view, name='order_edit'),
+
 ]
     # ... (Diğer url patternleriniz buraya gelecek) ...
     # Router tarafından tanımlanan URL'ler (Admin Finansal İşlemler)

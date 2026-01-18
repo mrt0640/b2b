@@ -183,6 +183,115 @@ def dealer_transactions_view(request):
     }
     return render(request, 'management/dealer_transactions.html', context)
 
+@login_required
+def edit_order_view(request, pk):
+    # Bayiyi ve siparişi doğrula
+    dealer = get_object_or_404(Dealer, user=request.user)
+    order = get_object_or_404(Order, pk=pk, dealer=dealer)
+
+    # KRİTİK: Sadece 'NEW' (Yeni Sipariş) siparişler düzenlenebilir
+    if order.status != 'NEW':
+        messages.error(request, "Bu sipariş işleme alındığı için artık düzenlenemez.")
+        return redirect('management:order_list')
+
+    if request.method == 'POST':
+        order_form = OrderForm(request.POST, instance=order)
+        formset = OrderItemFormSet(request.POST, instance=order, prefix='items')
+
+        if order_form.is_valid() and formset.is_valid():
+            try:
+                with transaction.atomic():
+                    # 1. Ana sipariş bilgilerini güncelle
+                    order = order_form.save()
+                    
+                    # 2. Ürün kalemlerini kaydet
+                    formset.instance = order
+                    items = formset.save(commit=False)
+                    
+                    total_amount = Decimal('0.00')
+                    for item in items:
+                        # Bayiye özel fiyatı tekrar kontrol et
+                        dealer_price_obj = DealerPrice.objects.filter(dealer=dealer, product=item.product).first()
+                        item.unit_price_at_order = dealer_price_obj.price if dealer_price_obj else item.product.selling_price
+                        item.save()
+                        total_amount += item.get_converted_total()
+
+                    # 3. Silinmesi istenen satırları temizle
+                    for deleted_obj in formset.deleted_objects:
+                        deleted_obj.delete()
+
+                    # 4. Toplam tutarı güncelle
+                    order.estimated_total = total_amount
+                    order.save()
+
+                messages.success(request, f"Sipariş #{order.pk} başarıyla güncellendi.")
+                return redirect('management:order_list')
+            except Exception as e:
+                messages.error(request, f"Güncelleme sırasında hata oluştu: {str(e)}")
+    else:
+        # GET isteğinde mevcut verileri forma yükle
+        order_form = OrderForm(instance=order)
+        formset = OrderItemFormSet(instance=order, prefix='items')
+
+    return render(request, 'management/new_order.html', {
+        'title': f'Siparişi Düzenle #{order.pk}',
+        'order_form': order_form,
+        'formset': formset,
+        'order': order # Template'de action URL'ini ayırt etmek için
+    })
+
+
+
+@login_required
+def dealer_order_update(request, pk):
+    # Siparişi getir ve bayinin kendi siparişi mi kontrol et
+    order = get_object_or_404(Order, pk=pk, dealer__user=request.user)
+    
+    # KRİTİK: Sipariş 'TESLİMATTA' veya 'TAMAMLANDI' ise düzenlemeyi engelle
+    if order.status != 'NEW': # Veya sizin sisteminizdeki başlangıç statüsü
+        messages.error(request, "Bu sipariş işleme alındığı için düzenlenemez.")
+        return redirect('management:dealer_dashboard')
+
+    if request.method == 'POST':
+        try:
+            with transaction.atomic():
+                # 1. Mevcut satırları güncelle veya sil
+                for item in order.items.all():
+                    qty_val = request.POST.get(f'qty_{item.id}')
+                    if qty_val:
+                        item.ordered_quantity = Decimal(qty_val.replace(',', '.'))
+                        item.save()
+                    else:
+                        # Eğer miktar boş gelirse veya silinmesi istenirse
+                        item.delete()
+
+                # 2. Yeni eklenen satırları işle
+                new_p_ids = request.POST.getlist('new_product_id[]')
+                new_qtys = request.POST.getlist('new_qty[]')
+                
+                for p_id, qty in zip(new_p_ids, new_qtys):
+                    if p_id and qty:
+                        product = Product.objects.get(id=p_id)
+                        OrderItem.objects.create(
+                            order=order,
+                            product=product,
+                            ordered_quantity=Decimal(qty.replace(',', '.')),
+                            ordered_unit=product.unit,
+                            unit_price_at_order=product.selling_price
+                        )
+
+                messages.success(request, "Siparişiniz başarıyla güncellendi.")
+                return redirect('management:dealer_dashboard')
+        except Exception as e:
+            messages.error(request, f"Hata: {str(e)}")
+
+    context = {
+        'order': order,
+        'all_products': Product.objects.filter(is_active=True),
+        'all_units': Unit.objects.all(),
+    }
+    return render(request, 'management/dealer_order_edit.html', context)
+
 
 @login_required
 def new_order_view(request):

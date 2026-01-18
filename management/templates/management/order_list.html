@@ -17,7 +17,7 @@
                     <tr>
                         <th>Sipariş No</th>
                         <th>Tarih</th>
-                        <th>Teslim Tarihi</th>
+                        <th>Sipariş Tutarı</th>
                         <th>Durum</th>
                         <th class="text-end">Toplam Tutar</th>
                         <th class="text-center">İşlemler</th>
@@ -41,6 +41,15 @@
                             <a href="{% url 'management:order_pdf' order.id %}" class="btn btn-sm btn-outline-danger" title="PDF İndir">
                                 <i class="fas fa-file-pdf"></i> PDF İndir
                             </a>
+                        </td>
+                        <td>
+                            {% if order.status == 'NEW' %}
+                                <a href="{% url 'management:order_edit' order.pk %}" class="btn btn-sm btn-outline-primary">
+                                    <i class="fas fa-edit"></i> Düzenle
+                                </a>
+                            {% else %}
+                                <span class="badge bg-secondary">Düzenlenemez</span>
+                            {% endif %}
                         </td>
                     </tr>
                     {% empty %}
