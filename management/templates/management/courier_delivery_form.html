@@ -13,64 +13,120 @@
     <form method="post">
         {% csrf_token %}
         <div class="table-responsive shadow-sm rounded">
-            <table class="table table-hover align-middle border">
-                <thead class="table-dark">
+            <table class="table table-hover align-middle">
+                <thead class="table-light">
                     <tr>
-                        <th>Ürün Bilgisi</th>
-                        <th width="200">Teslim Edilen Miktar</th>
-                    </tr>
+                        <th>Ürün</th>
+                        <th style="width: 250px;">Teslimat Bilgisi</th>
+                        <th class="text-end">Birim Fiyat</th>
+                        <th class="text-end">Toplam Tutar</th> </tr>
                 </thead>
                 <tbody>
                     {% for item in order.items.all %}
-                    <tr>
-                        <td>
-                            <span class="fw-bold text-dark">{{ item.product.name }}</span><br>
-                            <div class="mt-1">
-                                <span class="badge bg-secondary">Sipariş: {{ item.ordered_quantity }} {{ item.ordered_unit.name }}</span>
-                                <small class="text-muted ms-2">Fiyat: {{ item.unit_price_at_order }} TL</small>
-                            </div>
-                        </td>
+                    <tr class="order-item-row" 
+                        data-base-price="{{ item.product.selling_price|stringformat:'.2f' }}"
+                        data-base-unit-id="{{ item.product.unit.id }}">
+                        
+                        <td>{{ item.product.name }}</td>
                         <td>
                             <div class="input-group">
-                                <input type="number" name="delivered_{{ item.id }}" id="qty_{{ item.id }}" 
-                                       class="form-control border-primary fw-bold" 
-                                       value="{{ item.delivered_quantity|default:item.ordered_quantity }}" step="0.01">
-                                <span class="input-group-text bg-primary-subtle">{{ item.ordered_unit.name }}</span>
+                                <input type="number" name="delivered_qty_{{ item.id }}" 
+                                    value="{{ item.delivered_quantity }}" 
+                                    step="any" class="form-control qty-input">
+                                
+                                <select name="delivered_unit_{{ item.id }}" class="form-select unit-select">
+                                    {% for unit in all_units %}
+                                    <option value="{{ unit.id }}" {% if item.ordered_unit.id == unit.id %}selected{% endif %}>
+                                        {{ unit.name }}
+                                    </option>
+                                    {% endfor %}
+                                </select>
                             </div>
                         </td>
+                        <td class="text-end">
+                            <span class="display-price">0.00</span> TL
+                        </td>
+                        <td class="text-end fw-bold">
+                            <span class="line-total">0.00</span> TL
+                        </td>
                     </tr>
+
+                    <script>
+                    // Python'dan gelen çevrim haritası
+                    const conversionMap = {{ conversion_map|safe }};
+
+                    function calculateRowTotals() {
+                        document.querySelectorAll('.order-item-row').forEach(row => {
+                            const basePrice = parseFloat(row.getAttribute('data-base-price')) || 0;
+                            const baseUnitId = row.getAttribute('data-base-unit-id');
+                            const selectedUnitId = row.querySelector('.unit-select').value;
+                            const qty = parseFloat(row.querySelector('.qty-input').value.replace(',', '.')) || 0;
+
+                            let currentPrice = basePrice;
+
+                            // EĞER BİRİM DEĞİŞMİŞSE ÇEVRİM YAP
+                            if (baseUnitId !== selectedUnitId) {
+                                const key = `${selectedUnitId}-${baseUnitId}`; // Ters çevrim kontrolü (Tepsi -> KG için)
+                                const reverseKey = `${baseUnitId}-${selectedUnitId}`; // Düz çevrim (KG -> Tepsi)
+
+                                if (conversionMap[key]) {
+                                    // 1 Tepsi = 3 KG ise, Tepsi fiyatı = KG Fiyatı * 3
+                                    currentPrice = basePrice * conversionMap[key];
+                                } else if (conversionMap[reverseKey]) {
+                                    // Alternatif yön
+                                    currentPrice = basePrice / conversionMap[reverseKey];
+                                }
+                            }
+
+                            const total = qty * currentPrice;
+                            
+                            row.querySelector('.display-price').textContent = currentPrice.toFixed(2);
+                            row.querySelector('.line-total').textContent = total.toFixed(2);
+                        });
+                    }
+
+                    // Hem miktar hem birim değiştiğinde hesapla
+                    document.addEventListener('input', calculateRowTotals);
+                    document.addEventListener('change', calculateRowTotals);
+
+                    window.onload = calculateRowTotals;
+                    </script>
                     {% endfor %}
                 </tbody>
             </table>
         </div>
-
-        <div class="card mt-4 border-success shadow-sm">
-            <div class="card-header bg-success text-white py-2">
-                <h6 class="mb-0">+ Sahada Eklenen Yeni Ürün</h6>
+        
+        <div class="card shadow-sm border-success mb-4">
+    <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="fas fa-plus-circle me-2"></i>Sahada Eklenen Yeni Ürünler</h5>
+        <button type="button" onclick="addNewRow()" class="btn btn-light btn-sm fw-bold">+ Yeni Satır Ekle</button>
+    </div>
+    <div class="card-body bg-white" id="new-products-area">
+        <div id="row-template" class="row g-3 mb-3 border-bottom pb-3 product-row d-none">
+            <div class="col-8 col-md-7">
+                <label class="form-label small fw-bold">Ürün Seçin</label>
+                <select name="add_product_id[]" class="form-select product-select" onchange="updateUnit(this)">
+                    <option value="">--- Ürün Seçiniz ---</option>
+                    {% for p in all_products %}
+                        <option value="{{ p.id }}" data-unit="{{ p.unit.name }}">{{ p.name }}</option>
+                    {% endfor %}
+                </select>
             </div>
-            <div class="card-body">
-                <div class="row g-3">
-                    <div class="col-md-7">
-                        <label class="form-label small fw-bold">Ürün Seçimi</label>
-                        <select name="add_product_id" id="new_product_select" class="form-select">
-                            <option value="">Ürün Seçiniz...</option>
-                            {% for p in all_products %}
-                                <option value="{{ p.id }}" data-unit="{{ p.unit.name }}">
-                                    {{ p.name }}
-                                </option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div class="col-md-5">
-                        <label class="form-label small fw-bold">Miktar</label>
-                        <div class="input-group">
-                            <input type="number" name="add_qty" step="0.01" class="form-control border-success" placeholder="0.00">
-                            <span class="input-group-text bg-success-subtle" id="new_product_unit_label">-</span>
-                        </div>
-                    </div>
+            <div class="col-4 col-md-4">
+                <label class="form-label small fw-bold">Miktar</label>
+                <div class="input-group">
+                    <input type="number" name="add_qty[]" step="0.01" class="form-control" placeholder="0.00">
+                    <span class="input-group-text unit-label">-</span>
                 </div>
             </div>
+            <div class="col-12 col-md-1 d-flex align-items-end">
+                <button type="button" class="btn btn-outline-danger w-100" onclick="removeRow(this)">
+                    <i class="bi bi-trash"></i> <span class="d-md-none">Sil</span>
+                </button>
+            </div>
         </div>
+    </div>
+</div>
 
         <button type="submit" class="btn btn-primary btn-lg w-100 mt-4 mb-5 shadow">
             TESLİMATI KAYDET VE BİTİR
@@ -79,17 +135,46 @@
 </div>
 
 <script>
-// Yeni ürün seçildiğinde birimi sağdaki kutucuğa anlık yansıtır
-document.getElementById('new_product_select').addEventListener('change', function() {
-    const selectedOption = this.options[this.selectedIndex];
-    const unitLabel = document.getElementById('new_product_unit_label');
+function addNewRow() {
+    const container = document.getElementById('new-products-area');
+    const template = document.getElementById('row-template');
+    
+    // Şablonu kopyala
+    const newRow = template.cloneNode(true);
+    newRow.classList.remove('d-none'); // Gizliliği kaldır
+    newRow.removeAttribute('id');      // ID'yi temizle (tekil olmalı)
+    
+    // İçerikleri temizle
+    newRow.querySelector('select').value = "";
+    newRow.querySelector('input').value = "";
+    newRow.querySelector('.unit-label').textContent = "-";
+    
+    container.appendChild(newRow);
+}
+
+function removeRow(btn) {
+    // Satırı ekrandan siler, 'Kaydet' basıldığında backend'e gitmez.
+    const row = btn.closest('.product-row') || btn.closest('tr');
+    row.remove();
+}
+
+
+
+function updateUnit(selectElement) {
+    const selectedOption = selectElement.options[selectElement.selectedIndex];
+    const row = selectElement.closest('.product-row');
+    const unitLabel = row.querySelector('.unit-label');
     
     if (selectedOption.value) {
-        const unitName = selectedOption.getAttribute('data-unit');
-        unitLabel.textContent = unitName || '-';
+        unitLabel.textContent = selectedOption.getAttribute('data-unit') || '-';
     } else {
         unitLabel.textContent = '-';
     }
-});
+}
+
+// Sayfa ilk açıldığında kurye için hazır bir boş satır gelsin
+window.onload = function() {
+    addNewRow();
+};
 </script>
 {% endblock %}

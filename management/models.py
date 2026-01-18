@@ -87,7 +87,7 @@ class UnitConversion(models.Model):
     target_unit = models.ForeignKey(Unit, related_name='target_conversions', on_delete=models.CASCADE, verbose_name="Hedef Birim")
     conversion_factor = models.DecimalField(
         max_digits=10,
-        decimal_places=4,
+        decimal_places=3,
         verbose_name="Çevrim Faktörü (Kaynak * Faktör = Hedef)",
         help_text="Örn: 1 kg'ı 1000 gr'a çevirmek için 1000 girin. 1 gr'ı 1 kg'a çevirmek için 0.001 girin."
     )
@@ -228,6 +228,9 @@ class Product(models.Model):
     selling_price = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="Satış Fiyatı")
     is_active = models.BooleanField(default=True, verbose_name="Aktif Satışta mı?")
 
+    image = models.ImageField(upload_to='products/', null=True, blank=True, verbose_name="Ürün Görseli")
+    description = models.TextField(null=True, blank=True, verbose_name="Ürün Açıklaması")
+    
     # Satış Birimi (Unit modeline Foreign Key)
     unit = models.ForeignKey(Unit, on_delete=models.SET_NULL, null=True, verbose_name="Ana Birim")
     
@@ -342,7 +345,7 @@ class OrderItem(models.Model):
     # Ürün ana birimi cinsinden birim fiyatı tutar
     unit_price_at_order = models.DecimalField(
         max_digits=10, 
-        decimal_places=4, 
+        decimal_places=3, 
         null=True, 
         blank=True, 
         verbose_name="Sipariş Anındaki Birim Fiyat (Ürün Ana Birimi Cinsinden)"
@@ -895,7 +898,7 @@ class RecipeItem(models.Model):
     )
     quantity_required = models.DecimalField(
         max_digits=10, 
-        decimal_places=4, 
+        decimal_places=2, 
         verbose_name="Gerekli Miktar"
     )
     

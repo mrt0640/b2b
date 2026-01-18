@@ -6,7 +6,6 @@ from django.conf.urls.static import static
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('management/', include('management.urls')), # 'management/' ön eki burada tanımlı olmalı
     path('accounts/', include('django.contrib.auth.urls')),
     path('', include('management.urls'))
 ]

@@ -1,0 +1,59 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>Sipariş Detayı #{{ order.id }}</h2>
+        <a href="{% url 'management:dealer_dashboard' %}" class="btn btn-secondary">Geri Dön</a>
+    </div>
+
+    <div class="row">
+        <div class="col-md-4">
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-primary text-white">Sipariş Bilgileri</div>
+                <div class="card-body">
+                    <p><strong>Tarih:</strong> {{ order.order_date|date:"d.m.Y H:i" }}</p>
+                    <p><strong>Durum:</strong> <span class="badge bg-info">{{ order.get_status_display }}</span></p>
+                    <p><strong>Toplam Tutar:</strong> {{ order.total_amount|floatformat:2 }} TL</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-8">
+            <div class="card shadow-sm">
+                <div class="card-header bg-dark text-white">Ürün Listesi</div>
+                <div class="card-body">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Ürün</th>
+                                <th>Miktar</th>
+                                <th>Birim</th>
+                                <th>Birim Fiyat</th>
+                                <th>Ara Toplam</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        {% for item in items %}
+                        <tr>
+                            <td>{{ item.product.product_name|default:item.product.name }}</td>
+                            
+                            <td>{{ item.ordered_quantity }}</td>
+                            
+                            <td>{{ item.ordered_unit.name|default:"" }}</td>
+                            
+                            <td>{{ item.unit_price_at_order|floatformat:2 }} TL</td>
+                            
+                            <td>{{ item.line_total|floatformat:2 }} TL</td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="5" class="text-center text-muted">Bu siparişe ait ürün bulunamadı.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

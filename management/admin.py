@@ -1600,6 +1600,7 @@ class ProductAdmin(admin.ModelAdmin):
         'get_price_vat_excluded',
         'is_active'
     )
+    #fields = ('name', 'code', 'selling_price', 'unit', 'is_active', 'image', 'description')
     list_filter = ('is_active', 'unit')
     search_fields = ('name','unit', 'is_active','price_vat_included', 'vat_rate')
 

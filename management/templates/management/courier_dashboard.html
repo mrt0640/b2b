@@ -1,45 +1,56 @@
 {% extends 'base.html' %}
 {% block content %}
 <div class="container mt-4">
-    <h3 class="mb-4 text-center">Teslimat Listesi</h3>
+    <h3 class="mb-4 text-center">Kurye Paneli</h3>
     
-    <div class="row">
-        {% for order in orders %}
-        <div class="col-12 mb-3">
-            <div class="card shadow-sm border-primary">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-start">
-                        <div>
-                            <h5 class="card-title mb-1">{{ order.dealer.name }}</h5>
-                            <p class="text-muted small mb-2">
-                                <i class="bi bi-geo-alt-fill"></i> {{ order.dealer.address|default:"Adres Belirtilmemiş" }}
-                            </p>
-                        </div>
-                        <span class="badge bg-warning text-dark">{{ order.status }}</span>
-                    </div>
+    <ul class="nav nav-pills nav-fill mb-4 shadow-sm p-1 bg-white rounded" id="courierTab" role="tablist">
+        <li class="nav-item">
+            <button class="nav-link active fw-bold" id="pending-tab" data-bs-toggle="tab" data-bs-target="#pending" type="button">
+                <i class="bi bi-clock-history me-1"></i> Bekleyen ({{ pending_orders.count }})
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link fw-bold" id="completed-tab" data-bs-toggle="tab" data-bs-target="#completed" type="button">
+                <i class="bi bi-check-circle-fill me-1"></i> Tamamlanan
+            </button>
+        </li>
+    </ul>
 
-                    <div class="d-grid gap-2 d-md-block mt-2">
-                        <a href="{% url 'management:courier_delivery_update' order.pk %}" class="btn btn-primary">
-                            <i class="bi bi-box-seam"></i> Teslimat Gir
-                        </a>
-                        
-                        {% if order.dealer.phone %}
-                        <a href="tel:{{ order.dealer.phone }}" class="btn btn-success">
-                            <i class="bi bi-telephone"></i> Ara
-                        </a>
-                        {% endif %}
-                        
-                        <a href="https://www.google.com/maps/search/?api=1&query={{ order.dealer.address|urlencode }}" 
-                           target="_blank" class="btn btn-outline-secondary">
-                            <i class="bi bi-map"></i> Yol Tarifi
-                        </a>
-                    </div>
+    <div class="tab-content" id="courierTabContent">
+        <div class="tab-pane fade show active" id="pending" role="tabpanel">
+            {% for order in pending_orders %}
+            <div class="card shadow-sm border-primary mb-3">
+                <div class="card-body">
+                    <h5 class="card-title text-primary">{{ order.dealer.name }}</h5>
+                    <p class="text-muted small mb-3"><i class="bi bi-geo-alt"></i> {{ order.dealer.address|default:"Adres yok" }}</p>
+                    <a href="{% url 'management:courier_delivery_update' order.pk %}" class="btn btn-primary w-100">
+                        Teslimatı Başlat
+                    </a>
                 </div>
             </div>
+            {% empty %}
+            <div class="alert alert-light text-center border">Bekleyen teslimatınız bulunmuyor.</div>
+            {% endfor %}
         </div>
-        {% empty %}
-        <div class="alert alert-info text-center">Şu an teslimat bekleyen sipariş bulunmuyor.</div>
-        {% endfor %}
+
+        <div class="tab-pane fade" id="completed" role="tabpanel">
+            {% for order in completed_orders %}
+            <div class="card shadow-sm border-success mb-3 opacity-75">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h5 class="card-title mb-0 text-success">{{ order.dealer.name }}</h5>
+                        <span class="badge bg-success">Teslim Edildi</span>
+                    </div>
+                    <p class="small text-muted mb-3">Sipariş #{{ order.id }} - {{ order.order_date|date:"H:i" }}</p>
+                    <a href="{% url 'management:courier_delivery_update' order.pk %}" class="btn btn-outline-secondary btn-sm w-100">
+                        <i class="bi bi-pencil-square"></i> Teslimatı Güncelle / Düzelt
+                    </a>
+                </div>
+            </div>
+            {% empty %}
+            <div class="alert alert-light text-center border">Henüz tamamlanan teslimat yok.</div>
+            {% endfor %}
+        </div>
     </div>
 </div>
 {% endblock %}

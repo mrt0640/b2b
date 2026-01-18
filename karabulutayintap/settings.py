@@ -26,7 +26,13 @@ SECRET_KEY = 'django-insecure-=zzak%@j@+ipc^np7&=eu*j#kz#fc11#n#r!2ag+%i!i=+sp7v
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['djangomurat.pythonanywhere.com', '127.0.0.1', 'localhost']
+ALLOWED_HOSTS = [
+    'www.karabulutayintap.com', 
+    'karabulutayintap.com', 
+    'djangomurat.pythonanywhere.com', 
+    '127.0.0.1', 
+    'localhost'
+]
 
 
 # Application definition
@@ -170,3 +176,5 @@ LOGOUT_REDIRECT_URL = '/'
 STATICFILES_DIRS = [
     os.path.join(BASE_DIR, 'static'),
 ]
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
